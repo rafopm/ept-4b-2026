@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Proyectos · 1° a 4° Secundaria</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ SIDEBAR / MENÚ ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo">
+      <span class="logo-icon">📊</span>
+      <div>
+        <strong>Emprende Digital</strong>
+        <small>1° a 4° Secundaria</small>
+      </div>
+    </div>
+
+    <nav class="menu">
+      <button class="menu-item active" data-view="dashboard">
+        <span>📈</span> Dashboard
+      </button>
+      <button class="menu-item" data-view="entregables">
+        <span>📦</span> Entregables
+      </button>
+      <button class="menu-item" data-view="ranking">
+        <span>🏆</span> Ranking de Grupos
+      </button>
+      <button class="menu-item" data-view="links">
+        <span>🔗</span> Links de Interés
+      </button>
+      <button class="menu-item" data-view="recursos">
+        <span>📚</span> Recursos
+      </button>
+      <button class="menu-item" data-view="acerca">
+        <span>ℹ️</span> Acerca de
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <small>⚖️ Ley 32172 · Uso de computadoras IE</small>
+    </div>
+  </aside>
+
+  <!-- ============ CONTENIDO PRINCIPAL ============ -->
+  <main class="main">
+
+    <header class="topbar">
+      <button id="toggleSidebar" class="btn-toggle">☰</button>
+      <h1 id="viewTitle">Dashboard</h1>
+      <div class="topbar-actions">
+        <select id="filtroGrado" class="select">
+          <option value="">Todos los grados</option>
+        </select>
+        <select id="filtroSemana" class="select">
+          <option value="">Todas las semanas</option>
+        </select>
+        <button id="btnRefresh" class="btn">🔄 Refrescar</button>
+      </div>
+    </header>
+
+    <!-- ============ VISTA: DASHBOARD ============ -->
+    <section class="view active" id="view-dashboard">
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>📅 Tareas por Grado y Semana</h2>
+          <div id="matrizGradoSemana"></div>
+        </div>
+
+        <div class="card">
+          <h2>👥 Distribución por Rol</h2>
+          <div id="chartRoles"></div>
+        </div>
+
+        <div class="card">
+          <h2>🏷️ Tipo de Rol (Principal / Backup)</h2>
+          <div id="chartTipo"></div>
+        </div>
+
+        <div class="card">
+          <h2>📚 Tareas por Grado</h2>
+          <div id="chartGrado"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VISTA: ENTREGABLES ============ -->
+    <section class="view" id="view-entregables">
+      <div class="card">
+        <div class="toolbar">
+          <input type="search" id="buscarEntregable" placeholder="🔍 Buscar tarea o entregable...">
+          <select id="filtroRolEntregable" class="select">
+            <option value="">Todos los roles</option>
+            <option>CEO</option><option>CTO</option>
+            <option>CMO</option><option>CFO</option>
+          </select>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla" id="tablaEntregables">
+            <thead>
+              <tr>
+                <th>Grado</th><th>Sem</th><th>Rol</th>
+                <th>Tarea</th><th>Entregable</th>
+                <th>Backup</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="contador" id="contadorEntregables"></div>
+      </div>
+    </section>
+
+    <!-- ============ VISTA: RANKING ============ -->
+    <section class="view" id="view-ranking">
+      <div class="card">
+        <div class="toolbar">
+          <button class="btn" id="btnEditarRanking">✏️ Editar Ranking</button>
+          <button class="btn" id="btnAgregarGrupo">➕ Agregar Grupo</button>
+          <button class="btn" id="btnExportarRanking">⬇️ Exportar CSV</button>
+        </div>
+        <p class="hint">Haz doble clic en una celda para editar. Los cambios se guardan en tu navegador (localStorage).</p>
+        <div class="tabla-wrap">
+          <table class="tabla tabla-editable" id="tablaRanking">
+            <thead>
+              <tr>
+                <th>#</th><th>Grupo</th><th>Grado</th>
+                <th>Proyecto</th><th>Puntos</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VISTA: LINKS ============ -->
+    <section class="view" id="view-links">
+      <div class="card">
+        <div class="toolbar">
+          <button class="btn" id="btnAgregarLink">➕ Agregar Link</button>
+        </div>
+        <div class="links-grid" id="linksGrid"></div>
+      </div>
+    </section>
+
+    <!-- ============ VISTA: RECURSOS ============ -->
+    <section class="view" id="view-recursos">
+      <div class="card">
+        <div class="toolbar">
+          <button class="btn" id="btnAgregarRecurso">➕ Agregar Recurso</button>
+        </div>
+        <div class="links-grid" id="recursosGrid"></div>
+      </div>
+    </section>
+
+    <!-- ============ VISTA: ACERCA DE ============ -->
+    <section class="view" id="view-acerca">
+      <div class="card">
+        <h2>ℹ️ Acerca de este Dashboard</h2>
+        <p>Dashboard estático de los proyectos de emprendimiento digital para <strong>1° a 4° de secundaria</strong>.</p>
+        <p><strong>Marco legal:</strong> Ley 32172 — uso de computadoras en IE, sin celulares.</p>
+        <ul>
+          <li><strong>1° Secundaria:</strong> Digitalización de Negocio Familiar (Canva Web + WhatsApp)</li>
+          <li><strong>2° Secundaria:</strong> Digitalización de Servicios Locales (Canva + Google Forms)</li>
+          <li><strong>3° Secundaria:</strong> App Web No-Code con Base de Datos (Glide + Sheets)</li>
+          <li><strong>4° Secundaria:</strong> Tech Startup Escalable (Softr/Glide + Sheets)</li>
+        </ul>
+        <p>Roles por equipo: <strong>CEO, CTO, CMO, CFO</strong> (con backups).</p>
+        <p>Duración: <strong>6 semanas</strong> por bimestre.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ MODAL GENÉRICO ============ -->
+  <div class="modal" id="modal">
+    <div class="modal-box">
+      <h3 id="modalTitle">Editar</h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancel">Cancelar</button>
+        <button class="btn" id="modalSave">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOAST ============ -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
