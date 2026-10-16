@@ -3,133 +3,112 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Proyectos · 1° a 4° Secundaria</title>
+  <title>Emprende Digital · 1° a 4° Secundaria</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-  <!-- ============ SIDEBAR / MENÚ ============ -->
+<!-- ============ LOGIN ============ -->
+<div id="pantalla-login" class="login-screen">
+  <div class="login-box">
+    <div class="login-logo">📊</div>
+    <h1>Emprende Digital</h1>
+    <p class="login-sub">Ingresa con tu correo institucional</p>
+    <input type="email" id="inputCorreo" placeholder="tucorreo@colegio.edu.pe" autocomplete="email">
+    <button class="btn btn-full" id="btnLogin">Ingresar</button>
+    <p class="login-hint" id="loginError"></p>
+    <p class="login-hint">💡 Docente: usa el correo registrado en la hoja Config.</p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" style="display:none">
+
   <aside class="sidebar" id="sidebar">
     <div class="logo">
       <span class="logo-icon">📊</span>
       <div>
-        <strong>Emprende Digital</strong>
-        <small>1° a 4° Secundaria</small>
+        <strong id="sidebarNombre">Emprende Digital</strong>
+        <small id="sidebarRol">—</small>
       </div>
     </div>
 
     <nav class="menu">
-      <button class="menu-item active" data-view="dashboard">
-        <span>📈</span> Dashboard
-      </button>
-      <button class="menu-item" data-view="entregables">
-        <span>📦</span> Entregables
-      </button>
-      <button class="menu-item" data-view="ranking">
-        <span>🏆</span> Ranking de Grupos
-      </button>
-      <button class="menu-item" data-view="links">
-        <span>🔗</span> Links de Interés
-      </button>
-      <button class="menu-item" data-view="recursos">
-        <span>📚</span> Recursos
-      </button>
-      <button class="menu-item" data-view="acerca">
-        <span>ℹ️</span> Acerca de
-      </button>
+      <button class="menu-item active" data-view="dashboard"><span>📈</span> Dashboard</button>
+      <button class="menu-item" data-view="plan"><span>📋</span> Plan Semanal</button>
+      <button class="menu-item" data-view="ranking"><span>🏆</span> Ranking Equipos</button>
+      <button class="menu-item" data-view="ranking-individual"><span>🥇</span> Ranking Individual</button>
+
+      <button class="menu-item rol-alumno" data-view="mi-equipo"><span>👥</span> Mi Equipo</button>
+      <button class="menu-item rol-alumno" data-view="mis-notas"><span>📝</span> Mis Notas</button>
+      <button class="menu-item rol-alumno" data-view="mis-notas-individuales"><span>🌟</span> Mis Notas Individuales</button>
+
+      <button class="menu-item rol-docente" data-view="panel-docente"><span>🎓</span> Calificar Equipo</button>
+      <button class="menu-item rol-docente" data-view="panel-individual"><span>👤</span> Calificar Alumnos</button>
+      <button class="menu-item rol-docente" data-view="gestion-equipos"><span>⚙️</span> Grupos y Miembros</button>
+      <button class="menu-item rol-docente" data-view="entregas-admin"><span>📅</span> Entregas</button>
+
+      <button class="menu-item" data-view="acerca"><span>ℹ️</span> Acerca de</button>
     </nav>
 
     <div class="sidebar-footer">
+      <button class="btn-cerrar-sesion" id="btnLogout">🚪 Cerrar sesión</button>
       <small>⚖️ Ley 32172 · Uso de computadoras IE</small>
     </div>
   </aside>
 
-  <!-- ============ CONTENIDO PRINCIPAL ============ -->
   <main class="main">
-
     <header class="topbar">
       <button id="toggleSidebar" class="btn-toggle">☰</button>
       <h1 id="viewTitle">Dashboard</h1>
       <div class="topbar-actions">
-        <select id="filtroGrado" class="select">
-          <option value="">Todos los grados</option>
-        </select>
-        <select id="filtroSemana" class="select">
-          <option value="">Todas las semanas</option>
-        </select>
+        <select id="filtroSeccion" class="select"><option value="">Todas las secciones</option></select>
+        <select id="filtroGrado" class="select"><option value="">Todos los grados</option></select>
+        <select id="filtroSemana" class="select"><option value="">Todas las semanas</option></select>
         <button id="btnRefresh" class="btn">🔄 Refrescar</button>
       </div>
     </header>
 
-    <!-- ============ VISTA: DASHBOARD ============ -->
+    <!-- ============ DASHBOARD ============ -->
     <section class="view active" id="view-dashboard">
       <div class="kpis" id="kpis"></div>
-
       <div class="grid-2">
-        <div class="card">
-          <h2>📅 Tareas por Grado y Semana</h2>
-          <div id="matrizGradoSemana"></div>
-        </div>
-
-        <div class="card">
-          <h2>👥 Distribución por Rol</h2>
-          <div id="chartRoles"></div>
-        </div>
-
-        <div class="card">
-          <h2>🏷️ Tipo de Rol (Principal / Backup)</h2>
-          <div id="chartTipo"></div>
-        </div>
-
-        <div class="card">
-          <h2>📚 Tareas por Grado</h2>
-          <div id="chartGrado"></div>
-        </div>
+        <div class="card"><h2>📅 Tareas por Grado y Semana</h2><div id="matrizGradoSemana"></div></div>
+        <div class="card"><h2>👥 Distribución por Rol</h2><div id="chartRoles"></div></div>
+        <div class="card"><h2>🏷️ Tipo de Rol</h2><div id="chartTipo"></div></div>
+        <div class="card"><h2>📚 Tareas por Grado</h2><div id="chartGrado"></div></div>
       </div>
     </section>
 
-    <!-- ============ VISTA: ENTREGABLES ============ -->
-    <section class="view" id="view-entregables">
+    <!-- ============ PLAN SEMANAL ============ -->
+    <section class="view" id="view-plan">
       <div class="card">
-        <div class="toolbar">
-          <input type="search" id="buscarEntregable" placeholder="🔍 Buscar tarea o entregable...">
-          <select id="filtroRolEntregable" class="select">
-            <option value="">Todos los roles</option>
-            <option>CEO</option><option>CTO</option>
-            <option>CMO</option><option>CFO</option>
-          </select>
-        </div>
+        <h2>📋 Plan Semanal (hoja Data)</h2>
         <div class="tabla-wrap">
-          <table class="tabla" id="tablaEntregables">
+          <table class="tabla" id="tablaPlan">
             <thead>
               <tr>
-                <th>Grado</th><th>Sem</th><th>Rol</th>
-                <th>Tarea</th><th>Entregable</th>
-                <th>Backup</th>
+                <th>Grado</th><th>Sem</th><th>Tema</th><th>Rol</th>
+                <th>Tarea</th><th>Entregable</th><th>Backup</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
-        <div class="contador" id="contadorEntregables"></div>
       </div>
     </section>
 
-    <!-- ============ VISTA: RANKING ============ -->
+    <!-- ============ RANKING EQUIPOS ============ -->
     <section class="view" id="view-ranking">
       <div class="card">
-        <div class="toolbar">
-          <button class="btn" id="btnEditarRanking">✏️ Editar Ranking</button>
-          <button class="btn" id="btnAgregarGrupo">➕ Agregar Grupo</button>
-          <button class="btn" id="btnExportarRanking">⬇️ Exportar CSV</button>
-        </div>
-        <p class="hint">Haz doble clic en una celda para editar. Los cambios se guardan en tu navegador (localStorage).</p>
+        <h2>🏆 Ranking de Equipos</h2>
+        <p class="hint" id="rankingActualizado"></p>
         <div class="tabla-wrap">
-          <table class="tabla tabla-editable" id="tablaRanking">
+          <table class="tabla" id="tablaRanking">
             <thead>
               <tr>
-                <th>#</th><th>Grupo</th><th>Grado</th>
-                <th>Proyecto</th><th>Puntos</th><th>Acciones</th>
+                <th>#</th><th>Equipo</th><th>Grado</th><th>Sección</th>
+                <th>Proyecto</th><th>Puntos</th><th>%</th><th>Trello</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -138,60 +117,221 @@
       </div>
     </section>
 
-    <!-- ============ VISTA: LINKS ============ -->
-    <section class="view" id="view-links">
+    <!-- ============ RANKING INDIVIDUAL ============ -->
+    <section class="view" id="view-ranking-individual">
       <div class="card">
-        <div class="toolbar">
-          <button class="btn" id="btnAgregarLink">➕ Agregar Link</button>
+        <h2>🥇 Ranking Individual</h2>
+        <p class="hint">Suma de la rúbrica individual por alumno.</p>
+        <div class="tabla-wrap">
+          <table class="tabla" id="tablaRankingIndividual">
+            <thead>
+              <tr>
+                <th>#</th><th>Alumno</th><th>Grado</th><th>Sección</th>
+                <th>Rol</th><th>Equipo</th><th>Puntos</th><th>%</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
-        <div class="links-grid" id="linksGrid"></div>
       </div>
     </section>
 
-    <!-- ============ VISTA: RECURSOS ============ -->
-    <section class="view" id="view-recursos">
+    <!-- ============ MI EQUIPO ============ -->
+    <section class="view" id="view-mi-equipo">
+      <div class="card"><h2>👥 Mi Equipo</h2><div id="infoMiEquipo"></div></div>
+    </section>
+
+    <!-- ============ MIS NOTAS (grupal) ============ -->
+    <section class="view" id="view-mis-notas">
+      <div class="card"><h2>📝 Mis Notas del Equipo</h2><div id="listaMisNotas"></div></div>
+    </section>
+
+    <!-- ============ MIS NOTAS INDIVIDUALES ============ -->
+    <section class="view" id="view-mis-notas-individuales">
       <div class="card">
-        <div class="toolbar">
-          <button class="btn" id="btnAgregarRecurso">➕ Agregar Recurso</button>
-        </div>
-        <div class="links-grid" id="recursosGrid"></div>
+        <h2>🌟 Mis Notas Individuales</h2>
+        <div id="misNotasIndividuales"></div>
       </div>
     </section>
 
-    <!-- ============ VISTA: ACERCA DE ============ -->
+    <!-- ============ PANEL DOCENTE: CALIFICAR EQUIPO ============ -->
+    <section class="view" id="view-panel-docente">
+      <div class="card">
+        <h2>🎓 Calificar entrega del equipo</h2>
+        <p class="hint">⚠️ Califica según lo que <b>observas en la computadora</b>, no según lo que digan los alumnos.</p>
+
+        <div class="toolbar">
+          <select id="docenteSeccion" class="select"><option value="">-- Sección --</option></select>
+          <select id="docenteEquipo" class="select"><option value="">-- Equipo --</option></select>
+          <select id="docenteEntrega" class="select"><option value="">-- Entrega --</option></select>
+        </div>
+
+        <div id="rubricaPanel" style="display:none">
+          <h3 id="rubricaTitulo"></h3>
+
+          <div class="aviso-pc">
+            🔍 <b>Antes de calificar:</b> pide al equipo que muestre en la computadora la evidencia de la semana.
+          </div>
+
+          <table class="tabla" id="tablaRubrica">
+            <thead>
+              <tr>
+                <th style="width:22%">Criterio</th>
+                <th style="width:33%">Qué observar</th>
+                <th style="width:10%">Puntaje</th>
+                <th style="width:8%">Máx</th>
+                <th style="width:27%">Comentario</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+
+          <div style="margin-top:16px">
+            <label style="display:block;font-size:12px;color:#666;margin-bottom:6px">
+              📸 Observación de la PC (evidencia verificada):
+            </label>
+            <input type="text" id="observacionPc" placeholder="Ej: Mostraron la web publicada con los 5 productos"
+                   style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit">
+          </div>
+
+          <div style="margin-top:12px">
+            <label style="display:block;font-size:12px;color:#666;margin-bottom:6px">
+              💬 Comentario general (opcional):
+            </label>
+            <textarea id="comentarioGeneral" rows="2" placeholder="Retroalimentación general para el equipo"
+                      style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit"></textarea>
+          </div>
+
+          <div class="toolbar" style="margin-top:16px">
+            <button class="btn" id="btnGuardarCalificacion">💾 Guardar calificación</button>
+            <span id="resultadoGuardar"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📊 Resumen del equipo</h2>
+        <div id="resumenCalificaciones"></div>
+      </div>
+    </section>
+
+    <!-- ============ PANEL DOCENTE: CALIFICAR ALUMNOS ============ -->
+    <section class="view" id="view-panel-individual">
+      <div class="card">
+        <h2>👤 Calificar alumnos (rúbrica individual)</h2>
+        <p class="hint">⚠️ Califica según lo que <b>observas en la computadora</b>, no según lo que digan los alumnos.</p>
+
+        <div class="toolbar">
+          <select id="indSeccion" class="select"><option value="">-- Sección --</option></select>
+          <select id="indEquipo" class="select"><option value="">-- Equipo --</option></select>
+          <select id="indEntrega" class="select"><option value="">-- Entrega --</option></select>
+        </div>
+
+        <div id="indRubricaPanel" style="display:none">
+          <h3 id="indRubricaTitulo"></h3>
+          <div id="indListaAlumnos"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GESTIÓN DE EQUIPOS Y MIEMBROS ============ -->
+    <section class="view" id="view-gestion-equipos">
+      <div class="card">
+        <h2>⚙️ Grupos y Miembros</h2>
+        <div class="toolbar">
+          <button class="btn" id="btnNuevoEquipo">➕ Nuevo Equipo</button>
+          <button class="btn" id="btnNuevoAlumno">➕ Nuevo Alumno</button>
+          <button class="btn btn-ghost" id="btnRecargarGestion">🔄 Recargar</button>
+        </div>
+
+        <h3 style="margin-top:20px;font-size:14px;color:#0b5394">📁 Equipos</h3>
+        <div class="tabla-wrap">
+          <table class="tabla" id="tablaEquipos">
+            <thead>
+              <tr>
+                <th>ID</th><th>Nombre</th><th>Grado</th><th>Sección</th>
+                <th>Proyecto</th><th>Trello</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:24px;font-size:14px;color:#0b5394">👥 Alumnos</h3>
+        <div class="toolbar">
+          <select id="filtroEquipoAlumnos" class="select"><option value="">-- Todos los equipos --</option></select>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla" id="tablaAlumnos">
+            <thead>
+              <tr>
+                <th>Correo</th><th>Nombre</th><th>Grado</th><th>Sección</th>
+                <th>Equipo</th><th>Rol</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ADMIN ENTREGAS ============ -->
+    <section class="view" id="view-entregas-admin">
+      <div class="card">
+        <h2>📅 Entregas semanales</h2>
+        <div class="toolbar">
+          <button class="btn" id="btnNuevaEntrega">➕ Nueva Entrega</button>
+          <button class="btn btn-ghost" id="btnRecargarEntregas">🔄 Recargar</button>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla" id="tablaEntregasAdmin">
+            <thead>
+              <tr>
+                <th>ID</th><th>Equipo</th><th>Semana</th><th>Título</th>
+                <th>Descripción</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ACERCA ============ -->
     <section class="view" id="view-acerca">
       <div class="card">
-        <h2>ℹ️ Acerca de este Dashboard</h2>
-        <p>Dashboard estático de los proyectos de emprendimiento digital para <strong>1° a 4° de secundaria</strong>.</p>
-        <p><strong>Marco legal:</strong> Ley 32172 — uso de computadoras en IE, sin celulares.</p>
-        <ul>
-          <li><strong>1° Secundaria:</strong> Digitalización de Negocio Familiar (Canva Web + WhatsApp)</li>
-          <li><strong>2° Secundaria:</strong> Digitalización de Servicios Locales (Canva + Google Forms)</li>
-          <li><strong>3° Secundaria:</strong> App Web No-Code con Base de Datos (Glide + Sheets)</li>
-          <li><strong>4° Secundaria:</strong> Tech Startup Escalable (Softr/Glide + Sheets)</li>
+        <h2>ℹ️ Acerca de este sistema</h2>
+        <p>Dashboard de los proyectos de emprendimiento digital · <b>1° a 4° de secundaria</b>.</p>
+        <p><b>Marco legal:</b> Ley 32172 — uso de computadoras en IE, sin celulares.</p>
+        <ul style="padding-left:20px;margin-top:10px">
+          <li><b>1° Secundaria:</b> Digitalización de Negocio Familiar</li>
+          <li><b>2° Secundaria:</b> Digitalización de Servicios Locales</li>
+          <li><b>3° Secundaria:</b> App Web No-Code con Base de Datos</li>
+          <li><b>4° Secundaria:</b> Tech Startup Escalable</li>
         </ul>
-        <p>Roles por equipo: <strong>CEO, CTO, CMO, CFO</strong> (con backups).</p>
-        <p>Duración: <strong>6 semanas</strong> por bimestre.</p>
+        <p style="margin-top:10px">Roles por equipo: <b>CEO, CTO, CMO, CFO</b> (con backups).</p>
+        <p>Duración: <b>6 semanas</b> por bimestre.</p>
       </div>
     </section>
 
   </main>
+</div>
 
-  <!-- ============ MODAL GENÉRICO ============ -->
-  <div class="modal" id="modal">
-    <div class="modal-box">
-      <h3 id="modalTitle">Editar</h3>
-      <div id="modalBody"></div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="modalCancel">Cancelar</button>
-        <button class="btn" id="modalSave">Guardar</button>
-      </div>
+<!-- ============ MODAL ============ -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <h3 id="modalTitle">Editar</h3>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="modalCancel">Cancelar</button>
+      <button class="btn" id="modalSave">Guardar</button>
     </div>
   </div>
+</div>
 
-  <!-- ============ TOAST ============ -->
-  <div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div>
 
-  <script src="app.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
