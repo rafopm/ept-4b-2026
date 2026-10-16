@@ -34,8 +34,13 @@ function toast(msg, ms = 2500) {
 async function apiGet(accion, params = {}) {
   const url = new URL(API_URL);
   url.searchParams.set('accion', accion);
+
+  const idToken = localStorage.getItem('google_id_token');
+  if (idToken) url.searchParams.set('id_token', idToken);
+
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   url.searchParams.set('t', Date.now());
+
   const resp = await fetch(url.toString(), { redirect: 'follow' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const data = await resp.json();
@@ -79,6 +84,7 @@ async function hacerLogin(correo) {
 
 function cerrarSesion() {
   localStorage.removeItem(STORAGE_SESION);
+  localStorage.removeItem('google_id_token');
   location.reload();
 }
 
@@ -145,10 +151,11 @@ function navegar(view) {
 async function cargarPlan() {
   try {
     const data = await apiGet('plan');
+    console.log('Plan recibido:', (data.data || []).length, 'filas');
     state.plan = data.data || [];
-    state.filas = state.plan; // alias para el dashboard
+    state.filas = state.plan;
   } catch (e) {
-    console.warn('Plan no disponible:', e);
+    console.error('Error cargando plan:', e);
     state.plan = [];
     state.filas = [];
   }
@@ -1031,3 +1038,40 @@ async function arrancarApp() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+function handleGoogleCredential(response) {
+  const idToken = response.credential;
+  if (!idToken) {
+    $('#loginError').textContent = '⚠️ No se pudo obtener el token';
+    return;
+  }
+  localStorage.setItem('google_id_token', idToken);
+
+  const payload = JSON.parse(atob(idToken.split('.')[1]));
+  const correo = payload.email.toLowerCase();
+
+  hacerLoginConToken(correo, idToken);
+}
+
+async function hacerLoginConToken(correo, idToken) {
+  try {
+    const data = await apiGet('login', { correo, id_token: idToken });
+
+    if (data.tipo === 'docente') {
+      state.sesion = { tipo: 'docente', correo, nombre: data.nombre };
+    } else if (data.tipo === 'alumno') {
+      state.sesion = {
+        tipo: 'alumno', correo,
+        alumno: data.alumno, equipo: data.equipo, nombre: data.alumno.nombre
+      };
+    } else {
+      throw new Error('Tipo de usuario desconocido');
+    }
+
+    localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
+    mostrarApp();
+    await arrancarApp();
+  } catch (e) {
+    $('#loginError').textContent = '⚠️ ' + e.message;
+  }
+}

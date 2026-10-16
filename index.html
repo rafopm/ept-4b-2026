@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Emprende Digital · 1° a 4° Secundaria</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -13,11 +14,25 @@
   <div class="login-box">
     <div class="login-logo">📊</div>
     <h1>Emprende Digital</h1>
-    <p class="login-sub">Ingresa con tu correo institucional</p>
-    <input type="email" id="inputCorreo" placeholder="tucorreo@colegio.edu.pe" autocomplete="email">
-    <button class="btn btn-full" id="btnLogin">Ingresar</button>
+    <p class="login-sub">Ingresa con tu cuenta de Google</p>
+
+<div id="g_id_onload"
+     data-client_id="789057548601-l0qujt2ebv0n151t62timi5c6vnt3fhv.apps.googleusercontent.com"
+     data-callback="handleGoogleCredential"
+     data-auto_prompt="false">
+</div>
+
+<div class="g_id_signin"
+     data-type="standard"
+     data-size="large"
+     data-theme="outline"
+     data-text="signin_with"
+     data-shape="rectangular"
+     data-logo_alignment="left">
+</div>
+
     <p class="login-hint" id="loginError"></p>
-    <p class="login-hint">💡 Docente: usa el correo registrado en la hoja Config.</p>
+    <p class="login-hint">💡 Debes usar tu correo institucional registrado.</p>
   </div>
 </div>
 
