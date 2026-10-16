@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Emprende Digital · 1° a 4° Secundaria</title>
   <link rel="stylesheet" href="styles.css">
+
+  <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -16,23 +18,25 @@
     <h1>Emprende Digital</h1>
     <p class="login-sub">Ingresa con tu cuenta de Google</p>
 
-<div id="g_id_onload"
-     data-client_id="789057548601-l0qujt2ebv0n151t62timi5c6vnt3fhv.apps.googleusercontent.com"
-     data-callback="handleGoogleCredential"
-     data-auto_prompt="false">
-</div>
+    <!-- Configuración de Google Sign-In -->
+    <div id="g_id_onload"
+         data-client_id="789057548601-l0qujt2ebv0n151t62timi5c6vnt3fhv.apps.googleusercontent.com"
+         data-callback="handleGoogleCredential"
+         data-auto_prompt="false">
+    </div>
 
-<div class="g_id_signin"
-     data-type="standard"
-     data-size="large"
-     data-theme="outline"
-     data-text="signin_with"
-     data-shape="rectangular"
-     data-logo_alignment="left">
-</div>
+    <!-- Botón de Google -->
+    <div class="g_id_signin"
+         data-type="standard"
+         data-size="large"
+         data-theme="outline"
+         data-text="signin_with"
+         data-shape="rectangular"
+         data-logo_alignment="left">
+    </div>
 
     <p class="login-hint" id="loginError"></p>
-    <p class="login-hint">💡 Debes usar tu correo institucional registrado.</p>
+    <p class="login-hint">💡 Debes usar el correo registrado por tu docente.</p>
   </div>
 </div>
 
@@ -84,7 +88,7 @@
       </div>
     </header>
 
-    <!-- ============ DASHBOARD ============ -->
+    <!-- DASHBOARD -->
     <section class="view active" id="view-dashboard">
       <div class="kpis" id="kpis"></div>
       <div class="grid-2">
@@ -95,7 +99,7 @@
       </div>
     </section>
 
-    <!-- ============ PLAN SEMANAL ============ -->
+    <!-- PLAN SEMANAL -->
     <section class="view" id="view-plan">
       <div class="card">
         <h2>📋 Plan Semanal (hoja Data)</h2>
@@ -113,7 +117,7 @@
       </div>
     </section>
 
-    <!-- ============ RANKING EQUIPOS ============ -->
+    <!-- RANKING EQUIPOS -->
     <section class="view" id="view-ranking">
       <div class="card">
         <h2>🏆 Ranking de Equipos</h2>
@@ -132,11 +136,10 @@
       </div>
     </section>
 
-    <!-- ============ RANKING INDIVIDUAL ============ -->
+    <!-- RANKING INDIVIDUAL -->
     <section class="view" id="view-ranking-individual">
       <div class="card">
         <h2>🥇 Ranking Individual</h2>
-        <p class="hint">Suma de la rúbrica individual por alumno.</p>
         <div class="tabla-wrap">
           <table class="tabla" id="tablaRankingIndividual">
             <thead>
@@ -151,17 +154,17 @@
       </div>
     </section>
 
-    <!-- ============ MI EQUIPO ============ -->
+    <!-- MI EQUIPO -->
     <section class="view" id="view-mi-equipo">
       <div class="card"><h2>👥 Mi Equipo</h2><div id="infoMiEquipo"></div></div>
     </section>
 
-    <!-- ============ MIS NOTAS (grupal) ============ -->
+    <!-- MIS NOTAS (grupal) -->
     <section class="view" id="view-mis-notas">
       <div class="card"><h2>📝 Mis Notas del Equipo</h2><div id="listaMisNotas"></div></div>
     </section>
 
-    <!-- ============ MIS NOTAS INDIVIDUALES ============ -->
+    <!-- MIS NOTAS INDIVIDUALES -->
     <section class="view" id="view-mis-notas-individuales">
       <div class="card">
         <h2>🌟 Mis Notas Individuales</h2>
@@ -169,7 +172,7 @@
       </div>
     </section>
 
-    <!-- ============ PANEL DOCENTE: CALIFICAR EQUIPO ============ -->
+    <!-- PANEL DOCENTE: CALIFICAR EQUIPO -->
     <section class="view" id="view-panel-docente">
       <div class="card">
         <h2>🎓 Calificar entrega del equipo</h2>
@@ -230,7 +233,7 @@
       </div>
     </section>
 
-    <!-- ============ PANEL DOCENTE: CALIFICAR ALUMNOS ============ -->
+    <!-- PANEL DOCENTE: CALIFICAR ALUMNOS -->
     <section class="view" id="view-panel-individual">
       <div class="card">
         <h2>👤 Calificar alumnos (rúbrica individual)</h2>
@@ -249,7 +252,7 @@
       </div>
     </section>
 
-    <!-- ============ GESTIÓN DE EQUIPOS Y MIEMBROS ============ -->
+    <!-- GESTIÓN DE EQUIPOS -->
     <section class="view" id="view-gestion-equipos">
       <div class="card">
         <h2>⚙️ Grupos y Miembros</h2>
@@ -290,7 +293,7 @@
       </div>
     </section>
 
-    <!-- ============ ADMIN ENTREGAS ============ -->
+    <!-- ADMIN ENTREGAS -->
     <section class="view" id="view-entregas-admin">
       <div class="card">
         <h2>📅 Entregas semanales</h2>
@@ -312,7 +315,7 @@
       </div>
     </section>
 
-    <!-- ============ ACERCA ============ -->
+    <!-- ACERCA -->
     <section class="view" id="view-acerca">
       <div class="card">
         <h2>ℹ️ Acerca de este sistema</h2>
@@ -325,14 +328,13 @@
           <li><b>4° Secundaria:</b> Tech Startup Escalable</li>
         </ul>
         <p style="margin-top:10px">Roles por equipo: <b>CEO, CTO, CMO, CFO</b> (con backups).</p>
-        <p>Duración: <b>6 semanas</b> por bimestre.</p>
       </div>
     </section>
 
   </main>
 </div>
 
-<!-- ============ MODAL ============ -->
+<!-- MODAL -->
 <div class="modal" id="modal">
   <div class="modal-box">
     <h3 id="modalTitle">Editar</h3>

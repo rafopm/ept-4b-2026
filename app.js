@@ -1,14 +1,15 @@
 /* =========================================================
-   APP COMPLETA - LOGIN + ROLES + RÚBRICAS + RANKINGS
+   APP COMPLETA - LOGIN GOOGLE + ROLES + RÚBRICAS + RANKINGS
    ========================================================= */
 
 const API_URL = window.APP_CONFIG.API_URL;
 const STORAGE_SESION = 'emprende_sesion_v2';
+const STORAGE_TOKEN = 'google_id_token';
 
 let state = {
   sesion: null,
-  plan: [],             // data del plan (hoja Data)
-  filas: [],            // alias de plan (para dashboard)
+  plan: [],
+  filas: [],
   ranking: [],
   rankingIndividual: [],
   miInfo: null,
@@ -24,6 +25,7 @@ const $$ = (s, c = document) => [...c.querySelectorAll(s)];
 
 function toast(msg, ms = 2500) {
   const t = $('#toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._t);
@@ -35,10 +37,18 @@ async function apiGet(accion, params = {}) {
   const url = new URL(API_URL);
   url.searchParams.set('accion', accion);
 
-  const idToken = localStorage.getItem('google_id_token');
+  // El id_token siempre viene del localStorage (fuente única de verdad)
+  const idToken = localStorage.getItem(STORAGE_TOKEN);
   if (idToken) url.searchParams.set('id_token', idToken);
 
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  // El resto de parámetros, sin pisar id_token
+  Object.entries(params).forEach(([k, v]) => {
+    if (k === 'id_token') return;
+    if (v !== undefined && v !== null && v !== '') {
+      url.searchParams.set(k, v);
+    }
+  });
+
   url.searchParams.set('t', Date.now());
 
   const resp = await fetch(url.toString(), { redirect: 'follow' });
@@ -50,7 +60,12 @@ async function apiGet(accion, params = {}) {
 
 async function apiPost(accion, payload = {}) {
   if (!state.sesion) throw new Error('Sin sesión');
-  const body = { accion, correo: state.sesion.correo, ...payload };
+  const body = {
+    accion,
+    correo: state.sesion.correo,
+    id_token: localStorage.getItem(STORAGE_TOKEN) || '',
+    ...payload
+  };
   const resp = await fetch(API_URL, {
     method: 'POST',
     redirect: 'follow',
@@ -63,36 +78,83 @@ async function apiPost(accion, payload = {}) {
   return data;
 }
 
-/* ============ LOGIN ============ */
-async function hacerLogin(correo) {
-  correo = String(correo || '').toLowerCase().trim();
-  if (!correo || !correo.includes('@')) throw new Error('Ingresa un correo válido');
-  const data = await apiGet('login', { correo });
-  if (data.tipo === 'docente') {
-    state.sesion = { tipo: 'docente', correo, nombre: data.nombre };
-  } else if (data.tipo === 'alumno') {
-    state.sesion = {
-      tipo: 'alumno', correo,
-      alumno: data.alumno, equipo: data.equipo, nombre: data.alumno.nombre
-    };
-  } else {
-    throw new Error('Tipo de usuario desconocido');
+/* ============ LOGIN CON GOOGLE ============ */
+// Esta función la invoca Google Identity Services automáticamente
+function handleGoogleCredential(response) {
+  const errEl = $('#loginError');
+  try {
+    if (!response || !response.credential) {
+      throw new Error('No se recibió credencial de Google');
+    }
+    const idToken = response.credential;
+
+    // Decodificar el payload del JWT para obtener el correo
+    const payload = JSON.parse(atob(idToken.split('.')[1]));
+    const correo = (payload.email || '').toLowerCase().trim();
+    if (!correo) throw new Error('El token no contiene correo');
+
+    // Guardar token para futuras peticiones
+    localStorage.setItem(STORAGE_TOKEN, idToken);
+
+    hacerLoginConToken(correo);
+  } catch (e) {
+    if (errEl) errEl.textContent = '⚠️ ' + e.message;
+    console.error('Error procesando credencial de Google:', e, response);
   }
-  localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
-  return state.sesion;
+}
+
+async function hacerLoginConToken(correo) {
+  const errEl = $('#loginError');
+  try {
+    // El id_token ya lo agrega apiGet automáticamente desde localStorage
+    const data = await apiGet('login', { correo });
+
+    if (data.tipo === 'docente') {
+      state.sesion = { tipo: 'docente', correo, nombre: data.nombre };
+    } else if (data.tipo === 'alumno') {
+      state.sesion = {
+        tipo: 'alumno',
+        correo,
+        alumno: data.alumno,
+        equipo: data.equipo,
+        nombre: data.alumno.nombre
+      };
+    } else {
+      throw new Error('Tipo de usuario desconocido');
+    }
+
+    localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
+    mostrarApp();
+    await arrancarApp();
+  } catch (e) {
+    if (errEl) errEl.textContent = '⚠️ ' + e.message;
+    console.error('Error en login:', e);
+    // Limpiar token inválido
+    localStorage.removeItem(STORAGE_TOKEN);
+  }
 }
 
 function cerrarSesion() {
   localStorage.removeItem(STORAGE_SESION);
-  localStorage.removeItem('google_id_token');
+  localStorage.removeItem(STORAGE_TOKEN);
   location.reload();
 }
 
 function restaurarSesion() {
   try {
     const raw = localStorage.getItem(STORAGE_SESION);
-    if (raw) state.sesion = JSON.parse(raw);
-  } catch (e) {}
+    const token = localStorage.getItem(STORAGE_TOKEN);
+    if (raw && token) {
+      state.sesion = JSON.parse(raw);
+    } else {
+      // Si falta uno de los dos, no hay sesión válida
+      localStorage.removeItem(STORAGE_SESION);
+      localStorage.removeItem(STORAGE_TOKEN);
+      state.sesion = null;
+    }
+  } catch (e) {
+    state.sesion = null;
+  }
 }
 
 function mostrarApp() {
@@ -100,6 +162,7 @@ function mostrarApp() {
   $('#app').style.display = 'flex';
   document.body.classList.toggle('es-alumno', state.sesion.tipo === 'alumno');
   document.body.classList.toggle('es-docente', state.sesion.tipo === 'docente');
+
   $('#sidebarNombre').textContent = state.sesion.nombre || state.sesion.correo;
   $('#sidebarRol').textContent = state.sesion.tipo === 'docente'
     ? '👩‍🏫 Docente'
@@ -128,8 +191,10 @@ const TITULOS = {
 };
 
 function navegar(view) {
-  if (state.sesion.tipo === 'alumno' && (view.startsWith('panel-') || view === 'gestion-equipos' || view === 'entregas-admin')) return;
-  if (state.sesion.tipo === 'docente' && (view === 'mi-equipo' || view.startsWith('mis-notas'))) return;
+  if (state.sesion.tipo === 'alumno' &&
+      (view.startsWith('panel-') || view === 'gestion-equipos' || view === 'entregas-admin')) return;
+  if (state.sesion.tipo === 'docente' &&
+      (view === 'mi-equipo' || view.startsWith('mis-notas'))) return;
 
   $$('.menu-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
@@ -244,7 +309,11 @@ function renderMatriz() {
   grados.forEach(g => {
     let t = 0;
     html += `<tr><td><b>${g}</b></td>`;
-    semanas.forEach(s => { const v = m[g][s] || 0; t += v; html += `<td style="text-align:center">${v}</td>`; });
+    semanas.forEach(s => {
+      const v = m[g][s] || 0;
+      t += v;
+      html += `<td style="text-align:center">${v}</td>`;
+    });
     html += `<td style="text-align:center"><b>${t}</b></td></tr>`;
   });
   html += '</tbody></table></div>';
@@ -511,7 +580,6 @@ async function cargarRubricaPanel() {
   $('#rubricaPanel').style.display = 'block';
   $('#resultadoGuardar').textContent = '';
 
-  // Cargar resumen actual
   try {
     const resumen = await apiPost('resumen-equipo', { equipo_id: eqId });
     renderResumenEquipo(resumen);
@@ -725,7 +793,6 @@ async function cargarGestion() {
     state.equipos = eq.equipos || [];
     state.alumnos = al.alumnos || [];
 
-    // Tabla equipos
     $('#tablaEquipos tbody').innerHTML = state.equipos.map(e => `
       <tr data-id="${e.equipo_id}">
         <td>${e.equipo_id}</td>
@@ -742,7 +809,6 @@ async function cargarGestion() {
         </td>
       </tr>`).join('');
 
-    // Filtro de alumnos
     const selEq = $('#filtroEquipoAlumnos');
     selEq.innerHTML = '<option value="">-- Todos los equipos --</option>' +
       state.equipos.map(e => `<option value="${e.equipo_id}">${e.nombre_equipo}</option>`).join('');
@@ -750,7 +816,6 @@ async function cargarGestion() {
 
     renderTablaAlumnos();
 
-    // Eventos
     document.querySelectorAll('[data-accion="editar-equipo"]').forEach(b => {
       b.onclick = () => abrirModalEquipo(state.equipos.find(x => x.equipo_id === b.dataset.id));
     });
@@ -938,25 +1003,8 @@ function abrirModal({ title, campos, onSave }) {
 
 /* ============ INIT ============ */
 async function init() {
-  $('#btnLogin').addEventListener('click', async () => {
-    const correo = $('#inputCorreo').value;
-    $('#loginError').textContent = '';
-    try {
-      await hacerLogin(correo);
-      mostrarApp();
-      await arrancarApp();
-    } catch (e) {
-      $('#loginError').textContent = '⚠️ ' + e.message;
-    }
-  });
-
-  $('#inputCorreo').addEventListener('keydown', e => {
-    if (e.key === 'Enter') $('#btnLogin').click();
-  });
-
   $('#btnLogout').addEventListener('click', cerrarSesion);
 
-  // Modal cerrar con click afuera
   $('#modal').addEventListener('click', e => {
     if (e.target.id === 'modal') $('#modal').classList.remove('active');
   });
@@ -982,7 +1030,7 @@ async function arrancarApp() {
   $('#filtroSemana').innerHTML = '<option value="">Todas las semanas</option>' +
     semanas.map(s => `<option>${s}</option>`).join('');
 
-  // Secciones — solo docente las conoce al inicio, así que intentamos con las del login
+  // Secciones según rol
   if (state.sesion.tipo === 'docente') {
     try {
       const login = await apiGet('login', { correo: state.sesion.correo });
@@ -991,7 +1039,8 @@ async function arrancarApp() {
         secs.map(s => `<option>${s}</option>`).join('');
     } catch (e) {}
   } else if (state.sesion.alumno?.seccion) {
-    $('#filtroSeccion').innerHTML = `<option value="${state.sesion.alumno.seccion}">${state.sesion.alumno.seccion}</option>`;
+    $('#filtroSeccion').innerHTML =
+      `<option value="${state.sesion.alumno.seccion}">${state.sesion.alumno.seccion}</option>`;
     $('#filtroSeccion').value = state.sesion.alumno.seccion;
   }
 
@@ -1038,40 +1087,3 @@ async function arrancarApp() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
-
-function handleGoogleCredential(response) {
-  const idToken = response.credential;
-  if (!idToken) {
-    $('#loginError').textContent = '⚠️ No se pudo obtener el token';
-    return;
-  }
-  localStorage.setItem('google_id_token', idToken);
-
-  const payload = JSON.parse(atob(idToken.split('.')[1]));
-  const correo = payload.email.toLowerCase();
-
-  hacerLoginConToken(correo, idToken);
-}
-
-async function hacerLoginConToken(correo, idToken) {
-  try {
-    const data = await apiGet('login', { correo, id_token: idToken });
-
-    if (data.tipo === 'docente') {
-      state.sesion = { tipo: 'docente', correo, nombre: data.nombre };
-    } else if (data.tipo === 'alumno') {
-      state.sesion = {
-        tipo: 'alumno', correo,
-        alumno: data.alumno, equipo: data.equipo, nombre: data.alumno.nombre
-      };
-    } else {
-      throw new Error('Tipo de usuario desconocido');
-    }
-
-    localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
-    mostrarApp();
-    await arrancarApp();
-  } catch (e) {
-    $('#loginError').textContent = '⚠️ ' + e.message;
-  }
-}
