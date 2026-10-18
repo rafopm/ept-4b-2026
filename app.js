@@ -190,6 +190,19 @@ function mostrarApp() {
 function mostrarLogin() {
   $('#pantalla-login').style.display = 'flex';
   $('#app').style.display = 'none';
+
+  // Inicializar botón de Google leyendo desde el config
+  if (window.google && google.accounts) {
+    google.accounts.id.initialize({
+      client_id: window.APP_CONFIG.CLIENT_ID,
+      callback: handleGoogleCredential
+    });
+    
+    google.accounts.id.renderButton(
+      document.getElementById('btnGoogleLogin'),
+      { theme: 'outline', size: 'large', type: 'standard', shape: 'rectangular' }
+    );
+  }
 }
 
 /* ============ NAVEGACIÓN ============ */
