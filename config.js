@@ -1,4 +1,5 @@
 window.APP_CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbwbvUrv39KffxdNmwviT9ePa4i8_FyQoU6AA4DuvsGYE9nuOcRVPAdSOS6_MNBqJSTz/exec',
-  CLIENT_ID: '789057548601-meo85khsleg3jomocloh4nkbc8mleviv.apps.googleusercontent.com' 
+  API_URL: "https://4b-ept-2026.rpampavilca.workers.dev",
+  CLIENT_ID: '789057548601-meo85khsleg3jomocloh4nkbc8mleviv.apps.googleusercontent.com', // EL MISMO del otro sistema
+  DOMAIN: '@colegiosanmartin.edu.pe'
 };
