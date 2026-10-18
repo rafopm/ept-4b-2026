@@ -41,7 +41,12 @@ function invalidarSesionPorToken(error) {
   mostrarLogin();
 
   const errEl = $('#loginError');
-  if (errEl) errEl.textContent = '⚠️ La sesión de Google expiró o no es válida. Inicia sesión nuevamente.';
+  if (errEl) {
+    // Mostrar el motivo real que manda el servidor (antes todo se veía como "expiró")
+    errEl.textContent = /expir/i.test(String(error))
+      ? '⚠️ La sesión de Google expiró. Inicia sesión nuevamente.'
+      : '⚠️ ' + error;
+  }
   return true;
 }
 
@@ -158,11 +163,20 @@ function cerrarSesion() {
   location.reload();
 }
 
+// Lee el "exp" del JWT (segundos). Los id_token de Google duran ~1 hora.
+function tokenVencido(token) {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const exp = JSON.parse(atob(b64)).exp;
+    return !exp || exp * 1000 < Date.now() + 30000;
+  } catch (e) { return true; }
+}
+
 function restaurarSesion() {
   try {
     const raw = localStorage.getItem(STORAGE_SESION);
     const token = localStorage.getItem(STORAGE_TOKEN);
-    if (raw && token) {
+    if (raw && token && !tokenVencido(token)) {
       state.sesion = JSON.parse(raw);
     } else {
       // Si falta uno de los dos, no hay sesión válida
@@ -212,7 +226,9 @@ function inicializarGoogleSignIn() {
   try {
     google.accounts.id.initialize({
       client_id: window.APP_CONFIG.CLIENT_ID,
-      callback: handleGoogleCredential
+      callback: handleGoogleCredential,
+      auto_select: true,          // re-inicia sesión solo si ya la tenías abierta en Google
+      cancel_on_tap_outside: false
     });
 
     google.accounts.id.renderButton(
@@ -220,7 +236,8 @@ function inicializarGoogleSignIn() {
       { theme: 'outline', size: 'large', type: 'standard', shape: 'rectangular' }
     );
     googleSignInInitialized = true;
-    if (errEl) errEl.textContent = '';
+    if (errEl && !errEl.textContent.includes('expir')) errEl.textContent = '';
+    google.accounts.id.prompt(); // One Tap: renueva la sesión sin hacer clic
   } catch (error) {
     if (errEl) errEl.textContent = '⚠️ No se pudo inicializar el inicio de sesión de Google. Verifica CLIENT_ID y los orígenes autorizados.';
     console.error('Error inicializando Google Identity Services:', error);
