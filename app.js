@@ -191,19 +191,47 @@ function mostrarLogin() {
   $('#pantalla-login').style.display = 'flex';
   $('#app').style.display = 'none';
 
-  // Inicializar botón de Google leyendo desde el config
-  if (window.google && google.accounts) {
+  inicializarGoogleSignIn();
+}
+
+let googleSignInInitialized = false;
+
+function inicializarGoogleSignIn() {
+  const contenedor = $('#btnGoogleLogin');
+  const errEl = $('#loginError');
+
+  if (googleSignInInitialized || !contenedor) return;
+
+  if (!window.google?.accounts?.id) {
+    if (window.googleIdentityLoadFailed && errEl) {
+      errEl.textContent = '⚠️ No se pudo cargar el servicio de inicio de sesión de Google. Revisa la conexión o bloqueadores del navegador.';
+    }
+    return;
+  }
+
+  try {
     google.accounts.id.initialize({
       client_id: window.APP_CONFIG.CLIENT_ID,
       callback: handleGoogleCredential
     });
-    
+
     google.accounts.id.renderButton(
-      document.getElementById('btnGoogleLogin'),
+      contenedor,
       { theme: 'outline', size: 'large', type: 'standard', shape: 'rectangular' }
     );
+    googleSignInInitialized = true;
+    if (errEl) errEl.textContent = '';
+  } catch (error) {
+    if (errEl) errEl.textContent = '⚠️ No se pudo inicializar el inicio de sesión de Google. Verifica CLIENT_ID y los orígenes autorizados.';
+    console.error('Error inicializando Google Identity Services:', error);
   }
 }
+
+window.addEventListener('google-identity-loaded', inicializarGoogleSignIn);
+window.addEventListener('google-identity-failed', () => {
+  window.googleIdentityLoadFailed = true;
+  inicializarGoogleSignIn();
+});
 
 /* ============ NAVEGACIÓN ============ */
 const TITULOS = {

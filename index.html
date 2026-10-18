@@ -7,7 +7,11 @@
   <link rel="stylesheet" href="styles.css">
 
   <!-- Google Identity Services -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script
+    src="https://accounts.google.com/gsi/client"
+    async defer
+    onload="window.dispatchEvent(new Event('google-identity-loaded'))"
+    onerror="window.googleIdentityLoadFailed = true; window.dispatchEvent(new Event('google-identity-failed'))"></script>
 </head>
 <body>
 
