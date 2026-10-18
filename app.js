@@ -32,6 +32,19 @@ function toast(msg, ms = 2500) {
   t._t = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+function invalidarSesionPorToken(error) {
+  if (!/token/i.test(String(error || ''))) return false;
+
+  localStorage.removeItem(STORAGE_TOKEN);
+  localStorage.removeItem(STORAGE_SESION);
+  state.sesion = null;
+  mostrarLogin();
+
+  const errEl = $('#loginError');
+  if (errEl) errEl.textContent = '⚠️ La sesión de Google expiró o no es válida. Inicia sesión nuevamente.';
+  return true;
+}
+
 /* ============ API ============ */
 async function apiGet(accion, params = {}) {
   const url = new URL(API_URL);
@@ -54,7 +67,10 @@ async function apiGet(accion, params = {}) {
   const resp = await fetch(url.toString(), { redirect: 'follow' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const data = await resp.json();
-  if (data.error) throw new Error(data.error);
+  if (data.error) {
+    invalidarSesionPorToken(data.error);
+    throw new Error(data.error);
+  }
   return data;
 }
 
@@ -74,7 +90,10 @@ async function apiPost(accion, payload = {}) {
   });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const data = await resp.json();
-  if (data.error) throw new Error(data.error);
+  if (data.error) {
+    invalidarSesionPorToken(data.error);
+    throw new Error(data.error);
+  }
   return data;
 }
 
@@ -129,8 +148,7 @@ async function hacerLoginConToken(correo) {
   } catch (e) {
     if (errEl) errEl.textContent = '⚠️ ' + e.message;
     console.error('Error en login:', e);
-    // Limpiar token inválido
-    localStorage.removeItem(STORAGE_TOKEN);
+    invalidarSesionPorToken(e.message);
   }
 }
 
@@ -1011,6 +1029,15 @@ async function init() {
 
   restaurarSesion();
   if (state.sesion) {
+    try {
+      await apiGet('login', { correo: state.sesion.correo });
+    } catch (e) {
+      if (!invalidarSesionPorToken(e.message)) {
+        console.error('No se pudo validar la sesión guardada:', e);
+      }
+    }
+    if (!state.sesion) return;
+
     mostrarApp();
     await arrancarApp();
   } else {
