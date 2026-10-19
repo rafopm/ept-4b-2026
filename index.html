@@ -178,18 +178,44 @@
           </div>
         </div>
 
-        <!-- Carga de Evidencia / Enlace -->
+        <!-- Carga de Evidencia / Enlace y Archivos Drive -->
         <div class="card card-entrega-evidencia">
-          <h2>📤 Cargar Evidencia de tu Trabajo</h2>
-          <p class="hint">Pega aquí el enlace público de tu trabajo finalizado (Canva, Google Docs, Carrd, Glide, Sheets, Drive, etc.). El profesor lo revisará en la PC para tu calificación.</p>
+          <div class="card-header-flex">
+            <div>
+              <h2>📤 Cargar Evidencia de tu Trabajo</h2>
+              <p class="hint">Puedes pegar un enlace web (Canva, Carrd, Docs) o subir un archivo físico (PDF, PNG, Doc) directamente a Google Drive.</p>
+            </div>
+            <div class="evidencia-modo-tabs">
+              <button type="button" class="btn-tab active" id="btnTabModoLink">🔗 Pegar Enlace</button>
+              <button type="button" class="btn-tab" id="btnTabModoArchivo">📁 Subir Archivo a Drive</button>
+            </div>
+          </div>
           
+          <!-- MODO 1: PEGAR ENLACE -->
           <form id="formEvidenciaAlumno" class="form-evidencia">
             <div class="form-group-inline">
-              <input type="url" id="inputLinkEvidencia" placeholder="https://www.canva.com/design/... o https://docs.google.com/..." required class="input-url">
-              <button type="submit" class="btn btn-primary" id="btnGuardarEvidencia">📤 Guardar Evidencia</button>
+              <input type="url" id="inputLinkEvidencia" placeholder="https://www.canva.com/design/... o https://docs.google.com/..." class="input-url">
+              <button type="submit" class="btn btn-primary" id="btnGuardarEvidencia">📤 Guardar Enlace</button>
             </div>
             <div class="form-group">
               <input type="text" id="inputComentarioEvidencia" placeholder="Comentario opcional: Ej: Se terminaron los 2 logos y se seleccionó el oficial" class="input-text">
+            </div>
+          </form>
+
+          <!-- MODO 2: SUBIR ARCHIVO A GOOGLE DRIVE -->
+          <form id="formArchivoAlumno" class="form-evidencia" style="display:none">
+            <div class="drive-folder-banner">
+              📁 Se guardará en Google Drive del colegio en: <b>Entregas EPT - San Martín</b>
+            </div>
+            <div class="form-group-inline" style="margin-top:10px">
+              <input type="file" id="inputFileEvidencia" class="input-file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.ppt,.pptx,.xls,.xlsx">
+              <button type="submit" class="btn btn-primary" id="btnSubirArchivoDrive">☁️ Subir a Drive</button>
+            </div>
+            <div class="form-group">
+              <input type="text" id="inputComentarioArchivo" placeholder="Comentario opcional para el archivo..." class="input-text">
+            </div>
+            <div id="uploadProgress" style="display:none;font-size:12px;color:var(--azul);margin-top:6px">
+              ⏳ Subiendo archivo a Google Drive, por favor espera...
             </div>
           </form>
 
@@ -197,7 +223,7 @@
             <span class="check-icon">✅</span>
             <div class="evidencia-info">
               <strong>Evidencia Registrada para esta semana:</strong>
-              <a id="linkEvidenciaActual" href="#" target="_blank" rel="noopener">Ver enlace enviado ↗</a>
+              <a id="linkEvidenciaActual" href="#" target="_blank" rel="noopener">Ver entrega ↗</a>
               <small id="fechaEvidenciaActual">—</small>
             </div>
           </div>

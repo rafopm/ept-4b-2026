@@ -510,7 +510,102 @@ async function guardarEvidenciaAlumno(e) {
     verificarEvidenciaCargadaAlumno(semana);
   } finally {
     $('#btnGuardarEvidencia').disabled = false;
-    $('#btnGuardarEvidencia').textContent = '📤 Guardar Evidencia';
+    $('#btnGuardarEvidencia').textContent = '📤 Guardar Enlace';
+  }
+}
+
+async function subirArchivoDriveAlumno(e) {
+  e.preventDefault();
+  const fileInput = $('#inputFileEvidencia');
+  const comentario = $('#inputComentarioArchivo').value.trim();
+  const semana = Number(state.semanaSeleccionadaAlumno) || 1;
+  const alumno = state.sesion.alumno;
+
+  if (!fileInput.files || !fileInput.files.length) {
+    toast('⚠️ Selecciona un archivo de tu computadora');
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  // Límite de tamaño (Apps Script maneja cómodamente hasta ~15MB en POST)
+  if (file.size > 15 * 1024 * 1024) {
+    toast('⚠️ El archivo no debe superar los 15MB');
+    return;
+  }
+
+  const progress = $('#uploadProgress');
+  const btnSubir = $('#btnSubirArchivoDrive');
+
+  try {
+    btnSubir.disabled = true;
+    progress.style.display = 'block';
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const dataUrl = event.target.result;
+        const base64Data = dataUrl.split(',')[1];
+        const mimeType = file.type || 'application/octet-stream';
+
+        const payload = {
+          equipo_id: alumno.equipo_id,
+          semana: semana,
+          correo_alumno: state.sesion.correo,
+          rol: alumno.rol || 'CEO',
+          nombre_archivo: file.name,
+          mime_type: mimeType,
+          base64_data: base64Data,
+          comentario_alumno: comentario,
+          fecha: new Date().toISOString()
+        };
+
+        const resp = await apiPost('subir-archivo', payload);
+        const driveUrl = resp.url || ('https://drive.google.com/drive/u/0/search?q=' + encodeURIComponent(file.name));
+
+        // Registrar en state local
+        const evItem = {
+          equipo_id: alumno.equipo_id,
+          semana: semana,
+          correo_alumno: state.sesion.correo,
+          rol: alumno.rol || 'CEO',
+          link_evidencia: driveUrl,
+          comentario_alumno: comentario || `Archivo subido a Drive: ${file.name}`,
+          fecha: new Date().toISOString()
+        };
+
+        state.evidencias = state.evidencias.filter(x =>
+          !(String(x.equipo_id) === String(evItem.equipo_id) &&
+            Number(x.semana) === Number(evItem.semana) &&
+            String(x.correo_alumno).toLowerCase() === evItem.correo_alumno.toLowerCase())
+        );
+        state.evidencias.push(evItem);
+
+        toast(`☁️ Archivo guardado en Drive en: ${resp.carpeta_principal || 'Entregas EPT - San Martín'}`);
+        verificarEvidenciaCargadaAlumno(semana);
+        fileInput.value = '';
+        $('#inputComentarioArchivo').value = '';
+
+      } catch (errApi) {
+        toast('❌ Error subiendo a Drive: ' + errApi.message);
+      } finally {
+        btnSubir.disabled = false;
+        progress.style.display = 'none';
+      }
+    };
+
+    reader.onerror = () => {
+      toast('❌ Error leyendo el archivo local');
+      btnSubir.disabled = false;
+      progress.style.display = 'none';
+    };
+
+    reader.readAsDataURL(file);
+
+  } catch (err) {
+    btnSubir.disabled = false;
+    progress.style.display = 'none';
+    toast('❌ ' + err.message);
   }
 }
 
@@ -1745,6 +1840,25 @@ async function init() {
     renderDashboardAlumno();
   };
   $('#formEvidenciaAlumno').onsubmit = guardarEvidenciaAlumno;
+
+  // Tabs de modo entrega (Link web o Archivo Drive)
+  if ($('#btnTabModoLink') && $('#btnTabModoArchivo')) {
+    $('#btnTabModoLink').onclick = () => {
+      $('#btnTabModoLink').classList.add('active');
+      $('#btnTabModoArchivo').classList.remove('active');
+      $('#formEvidenciaAlumno').style.display = 'block';
+      $('#formArchivoAlumno').style.display = 'none';
+    };
+    $('#btnTabModoArchivo').onclick = () => {
+      $('#btnTabModoArchivo').classList.add('active');
+      $('#btnTabModoLink').classList.remove('active');
+      $('#formEvidenciaAlumno').style.display = 'none';
+      $('#formArchivoAlumno').style.display = 'block';
+    };
+  }
+  if ($('#formArchivoAlumno')) {
+    $('#formArchivoAlumno').onsubmit = subirArchivoDriveAlumno;
+  }
 
   // Restaurar sesión existente
   restaurarSesion();
