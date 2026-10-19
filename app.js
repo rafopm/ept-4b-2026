@@ -39,7 +39,15 @@ let state = {
   puntosExtra: [],
   rubricaGrupal: [],
   rubricaIndividual: [],
-  semanaSeleccionadaAlumno: 1
+  semanaSeleccionadaAlumno: 1,
+  sorteo: {
+    resultados: [],
+    indiceActual: 0,
+    segundosRestantes: 300,
+    intervalo: null,
+    corriendo: false,
+    tiempoPorTurnoMin: 5
+  }
 };
 
 const $ = (s, c = document) => c.querySelector(s);
@@ -277,6 +285,7 @@ const TITULOS = {
   'gestion-equipos': 'Grupos y Roles',
   gamificacion: 'Motor de Gamificación e Incentivos',
   reportes: 'Reportes y Listas Imprimibles',
+  sorteo: 'Sorteo y Turnos de Exposición',
   'mi-equipo': 'Mi Equipo',
   'mis-notas': 'Mis Calificaciones',
   ranking: 'Ranking de Equipos',
@@ -303,6 +312,7 @@ function navegar(view) {
   if (view === 'gestion-equipos') cargarGestion();
   if (view === 'gamificacion') cargarGamificacion();
   if (view === 'reportes') inicializarReportes();
+  if (view === 'sorteo') inicializarSorteo();
   if (view === 'ranking') cargarRanking();
   if (view === 'ranking-individual') cargarRankingIndividual();
   if (view === 'mi-equipo') renderMiEquipo();
@@ -1592,6 +1602,399 @@ function renderReporteImprimible() {
 }
 
 /* =========================================================
+   6. SORTEO Y TURNOS DE EXPOSICIÓN / ENTREGAS
+   ========================================================= */
+async function inicializarSorteo() {
+  if (!state.equipos.length || !state.alumnos.length) {
+    try {
+      const [eqData, alData] = await Promise.all([
+        apiGet('listar', { hoja: 'Equipos' }).catch(() => ({ equipos: [] })),
+        apiGet('listar', { hoja: 'Alumnos' }).catch(() => ({ alumnos: [] }))
+      ]);
+      if (eqData.equipos) state.equipos = eqData.equipos;
+      if (alData.alumnos) state.alumnos = alData.alumnos;
+    } catch (e) {
+      console.warn('Error cargando datos para sorteo:', e);
+    }
+  }
+
+  // Secciones disponibles
+  const secsEquipos = state.equipos.map(e => e.seccion).filter(Boolean);
+  const secsAlumnos = state.alumnos.map(a => a.seccion).filter(Boolean);
+  const secs = [...new Set([...secsEquipos, ...secsAlumnos])].sort();
+
+  const selSec = $('#sorteoSeccion');
+  if (selSec) {
+    const valActual = selSec.value;
+    selSec.innerHTML = '<option value="">-- Todas las Secciones --</option>' +
+      secs.map(s => `<option value="${s}">Sección ${s}</option>`).join('');
+
+    if (valActual && secs.includes(valActual)) {
+      selSec.value = valActual;
+    } else if (state.sesion?.tipo === 'alumno' && state.sesion.alumno?.seccion) {
+      selSec.value = state.sesion.alumno.seccion;
+    } else if (secs.length > 0) {
+      selSec.value = secs[0];
+    }
+  }
+
+  // Handlers principales
+  const btnLanzar = $('#btnLanzarSorteo');
+  if (btnLanzar) btnLanzar.onclick = ejecutarSorteo;
+
+  const btnReiniciar = $('#btnReiniciarSorteo');
+  if (btnReiniciar) btnReiniciar.onclick = reiniciarSorteo;
+
+  const btnImprimir = $('#btnImprimirSorteo');
+  if (btnImprimir) btnImprimir.onclick = () => window.print();
+
+  // Handlers del cronómetro
+  const btnPlay = $('#btnCronoPlay');
+  if (btnPlay) btnPlay.onclick = iniciarCronometroPitch;
+
+  const btnPause = $('#btnCronoPause');
+  if (btnPause) btnPause.onclick = pausarCronometroPitch;
+
+  const btnNext = $('#btnCronoNext');
+  if (btnNext) btnNext.onclick = siguienteTurnoPitch;
+
+  const btnReset = $('#btnCronoReset');
+  if (btnReset) btnReset.onclick = reiniciarRelojPitch;
+
+  if (state.sorteo?.resultados?.length) {
+    renderResultadosSorteo();
+  }
+}
+
+async function ejecutarSorteo() {
+  const tipo = $('#sorteoTipo').value; // 'grupos', 'alumnos', 'voceros'
+  const seccion = $('#sorteoSeccion').value;
+  const tiempoMin = parseInt($('#sorteoTiempo').value, 10) || 5;
+
+  if (!state.equipos.length && !state.alumnos.length) {
+    toast('⚠️ No hay equipos ni alumnos cargados aún');
+    return;
+  }
+
+  // Mostrar animación de sorteo
+  const animBox = $('#cajaAnimacionSorteo');
+  const txtAnim = $('#textoAnimacionSorteo');
+  if (animBox) {
+    animBox.style.display = 'block';
+    txtAnim.textContent = tipo === 'grupos' 
+      ? '🎲 ¡Sorteando orden de exposición de los equipos...!'
+      : tipo === 'voceros'
+      ? '🎤 ¡Sorteando voceros representantes de cada equipo...!'
+      : '👤 ¡Sorteando secuencia individual de alumnos...!';
+  }
+
+  // Construir pool según la opción elegida
+  let pool = [];
+
+  if (tipo === 'grupos') {
+    let eqs = [...state.equipos];
+    if (seccion) eqs = eqs.filter(e => String(e.seccion).trim() === String(seccion).trim());
+    if (!eqs.length) {
+      if (animBox) animBox.style.display = 'none';
+      toast(`⚠️ No se encontraron equipos en la sección seleccionada`);
+      return;
+    }
+    pool = eqs.map(e => ({
+      tipo: 'equipo',
+      id: e.equipo_id,
+      nombre: e.nombre_equipo || e.nombre || `Equipo ${e.equipo_id}`,
+      seccion: e.seccion || '—',
+      grado: e.grado || '—',
+      proyecto: e.proyecto || 'Proyecto Digital',
+      trello: e.trello_url || '',
+      estado: 'Pendiente'
+    }));
+  } else if (tipo === 'alumnos') {
+    let als = [...state.alumnos];
+    if (seccion) als = als.filter(a => String(a.seccion).trim() === String(seccion).trim());
+    if (!als.length) {
+      if (animBox) animBox.style.display = 'none';
+      toast(`⚠️ No se encontraron alumnos en la sección seleccionada`);
+      return;
+    }
+    pool = als.map(a => {
+      const eq = state.equipos.find(e => String(e.equipo_id) === String(a.equipo_id));
+      const nom = a.nombre || [a.nombres, a.apellidos].filter(Boolean).join(' ') || a.correo;
+      return {
+        tipo: 'alumno',
+        id: a.alumno_id || a.id,
+        nombre: nom,
+        seccion: a.seccion || '—',
+        grado: a.grado || '—',
+        proyecto: `Rol: ${a.rol || 'Miembro'} · Equipo: ${eq?.nombre_equipo || a.equipo || 'Sin equipo'}`,
+        rol: a.rol || 'CEO',
+        estado: 'Pendiente'
+      };
+    });
+  } else if (tipo === 'voceros') {
+    let eqs = [...state.equipos];
+    if (seccion) eqs = eqs.filter(e => String(e.seccion).trim() === String(seccion).trim());
+    if (!eqs.length) {
+      if (animBox) animBox.style.display = 'none';
+      toast(`⚠️ No se encontraron equipos en la sección seleccionada`);
+      return;
+    }
+    pool = eqs.map(e => {
+      const miembros = state.alumnos.filter(a => String(a.equipo_id) === String(e.equipo_id));
+      let vocero = null;
+      if (miembros.length > 0) {
+        vocero = miembros[Math.floor(Math.random() * miembros.length)];
+      }
+      const nomVocero = vocero ? (vocero.nombre || [vocero.nombres, vocero.apellidos].filter(Boolean).join(' ') || vocero.correo) : 'Sin miembros';
+      const rolVocero = vocero ? vocero.rol : '—';
+      return {
+        tipo: 'vocero',
+        id: e.equipo_id,
+        nombre: `${nomVocero} (${rolVocero})`,
+        seccion: e.seccion || '—',
+        grado: e.grado || '—',
+        proyecto: `Representante de: ${e.nombre_equipo || 'Equipo'} · ${e.proyecto || ''}`,
+        estado: 'Pendiente'
+      };
+    });
+  }
+
+  // Algoritmo de barajado imparcial Fisher-Yates
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  // Asignar turnos y cálculo de hora estimada
+  const ahora = new Date();
+  pool.forEach((item, idx) => {
+    item.turno = idx + 1;
+    const horaTurno = new Date(ahora.getTime() + idx * tiempoMin * 60000);
+    item.horaEstimada = horaTurno.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  });
+
+  // Guardar en el estado
+  state.sorteo = {
+    tipo,
+    seccion,
+    tiempoPorTurnoMin: tiempoMin,
+    segundosRestantes: tiempoMin * 60,
+    indiceActual: 0,
+    intervalo: null,
+    corriendo: false,
+    resultados: pool
+  };
+
+  if (pool.length > 0) {
+    pool[0].estado = 'En Exposición';
+  }
+
+  // Simular emoción visual de ruleta
+  setTimeout(() => {
+    if (animBox) animBox.style.display = 'none';
+    renderResultadosSorteo();
+    configurarCronometroParaTurno(0);
+    toast(`🎉 ¡Sorteo completado! Se generaron ${pool.length} turnos.`);
+  }, 900);
+}
+
+function renderResultadosSorteo() {
+  const sorteo = state.sorteo;
+  if (!sorteo || !sorteo.resultados || !sorteo.resultados.length) {
+    if ($('#sorteoVacio')) $('#sorteoVacio').style.display = 'block';
+    if ($('#sorteoTablaWrap')) $('#sorteoTablaWrap').style.display = 'none';
+    if ($('#sorteoStatsBar')) $('#sorteoStatsBar').style.display = 'none';
+    if ($('#cronoPitchWrap')) $('#cronoPitchWrap').style.display = 'none';
+    return;
+  }
+
+  if ($('#sorteoVacio')) $('#sorteoVacio').style.display = 'none';
+  if ($('#sorteoTablaWrap')) $('#sorteoTablaWrap').style.display = 'block';
+  if ($('#sorteoStatsBar')) $('#sorteoStatsBar').style.display = 'flex';
+  if ($('#cronoPitchWrap')) $('#cronoPitchWrap').style.display = 'block';
+
+  const total = sorteo.resultados.length;
+  const duracionTotal = total * (sorteo.tiempoPorTurnoMin || 5);
+  $('#sorteoStatsTotal').textContent = `📊 Total sorteados: ${total} ${sorteo.tipo === 'grupos' ? 'equipos' : 'participantes'}`;
+  $('#sorteoStatsTiempoTotal').textContent = `⏱️ Duración estimada total: ${duracionTotal} min (${(duracionTotal / 60).toFixed(1)} h)`;
+
+  const tbody = $('#tbodyResultadosSorteo');
+  if (!tbody) return;
+
+  tbody.innerHTML = sorteo.resultados.map((res, idx) => {
+    let badgeClass = 'badge-turno';
+    if (res.turno === 1) badgeClass += ' turno-1';
+    else if (res.turno === 2) badgeClass += ' turno-2';
+    else if (res.turno === 3) badgeClass += ' turno-3';
+
+    const esActual = idx === sorteo.indiceActual;
+    const filaEstilo = esActual ? 'background:#eff6ff;font-weight:600' : '';
+
+    let estadoBadge = '<span class="badge" style="background:#f1f5f9;color:#475569">⏳ Pendiente</span>';
+    if (res.estado === 'En Exposición') {
+      estadoBadge = '<span class="badge" style="background:#dbeafe;color:#1e40af;animation:blink 1.5s infinite">🎤 En Exposición</span>';
+    } else if (res.estado === 'Finalizado') {
+      estadoBadge = '<span class="badge" style="background:#dcfce7;color:#166534">✅ Expuesto</span>';
+    }
+
+    const accionEvaluar = (state.sesion?.tipo === 'docente' && (res.tipo === 'equipo' || res.tipo === 'vocero'))
+      ? `<button class="btn btn-ghost btn-sm" onclick="saltarAEvaluarEquipo('${res.id}')" title="Calificar este equipo">⚡ Calificar</button>`
+      : '';
+
+    return `
+      <tr style="${filaEstilo}">
+        <td style="text-align:center"><span class="${badgeClass}">${res.turno}</span></td>
+        <td>
+          <b>${res.nombre}</b>
+          ${res.trello ? `<br><a href="${res.trello}" target="_blank" rel="noopener" style="font-size:11px;color:var(--azul)">📋 Trello ↗</a>` : ''}
+        </td>
+        <td style="text-align:center"><span class="badge badge-sec">${res.seccion}</span></td>
+        <td><small>${res.proyecto}</small></td>
+        <td style="text-align:center;font-weight:700;color:var(--azul-oscuro)">${res.horaEstimada}</td>
+        <td style="text-align:center" class="no-print">
+          ${estadoBadge}
+          <div style="margin-top:4px">${accionEvaluar}</div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+/* ============ CRONÓMETRO DE PITCH INTEGRADO ============ */
+function configurarCronometroParaTurno(indice) {
+  const sorteo = state.sorteo;
+  if (!sorteo || !sorteo.resultados || !sorteo.resultados[indice]) return;
+
+  sorteo.indiceActual = indice;
+  sorteo.segundosRestantes = (sorteo.tiempoPorTurnoMin || 5) * 60;
+  pausarCronometroPitch();
+
+  const actual = sorteo.resultados[indice];
+  const lbl = $('#cronoTurnoActualLabel');
+  if (lbl) lbl.textContent = `Turno ${actual.turno}: ${actual.nombre}`;
+  actualizarDisplayCronometro();
+}
+
+function actualizarDisplayCronometro() {
+  const segs = Math.max(0, state.sorteo?.segundosRestantes || 0);
+  const m = Math.floor(segs / 60);
+  const s = segs % 60;
+  const display = $('#cronoDisplay');
+  if (!display) return;
+
+  display.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+  display.classList.remove('advertencia', 'tiempo-agotado');
+  const sub = $('#cronoSubtitulo');
+  if (segs <= 0) {
+    display.classList.add('tiempo-agotado');
+    if (sub) sub.textContent = '⚠️ ¡TIEMPO CONCLUIDO! Por favor concluyan la exposición.';
+  } else if (segs <= 60) {
+    display.classList.add('advertencia');
+    if (sub) sub.textContent = '⏳ Último minuto de exposición';
+  } else {
+    if (sub) sub.textContent = 'Tiempo restante para exponer';
+  }
+}
+
+function iniciarCronometroPitch() {
+  if (state.sorteo.corriendo) return;
+  state.sorteo.corriendo = true;
+  const btnPlay = $('#btnCronoPlay');
+  const btnPause = $('#btnCronoPause');
+  if (btnPlay) btnPlay.style.display = 'none';
+  if (btnPause) btnPause.style.display = 'inline-block';
+
+  clearInterval(state.sorteo.intervalo);
+  state.sorteo.intervalo = setInterval(() => {
+    if (state.sorteo.segundosRestantes > 0) {
+      state.sorteo.segundosRestantes--;
+      actualizarDisplayCronometro();
+      if (state.sorteo.segundosRestantes === 0) {
+        sonarAlarmaPitch();
+      }
+    } else {
+      pausarCronometroPitch();
+    }
+  }, 1000);
+}
+
+function pausarCronometroPitch() {
+  state.sorteo.corriendo = false;
+  clearInterval(state.sorteo.intervalo);
+  state.sorteo.intervalo = null;
+  const btnPlay = $('#btnCronoPlay');
+  const btnPause = $('#btnCronoPause');
+  if (btnPlay) btnPlay.style.display = 'inline-block';
+  if (btnPause) btnPause.style.display = 'none';
+}
+
+function siguienteTurnoPitch() {
+  pausarCronometroPitch();
+  const sorteo = state.sorteo;
+  if (!sorteo || !sorteo.resultados) return;
+
+  if (sorteo.resultados[sorteo.indiceActual]) {
+    sorteo.resultados[sorteo.indiceActual].estado = 'Finalizado';
+  }
+
+  if (sorteo.indiceActual + 1 < sorteo.resultados.length) {
+    sorteo.indiceActual++;
+    sorteo.resultados[sorteo.indiceActual].estado = 'En Exposición';
+    configurarCronometroParaTurno(sorteo.indiceActual);
+    renderResultadosSorteo();
+    toast(`🎤 Iniciando Turno ${sorteo.indiceActual + 1}: ${sorteo.resultados[sorteo.indiceActual].nombre}`);
+  } else {
+    renderResultadosSorteo();
+    toast('🎉 ¡Han finalizado todas las exposiciones del sorteo!');
+  }
+}
+
+function reiniciarRelojPitch() {
+  pausarCronometroPitch();
+  state.sorteo.segundosRestantes = (state.sorteo.tiempoPorTurnoMin || 5) * 60;
+  actualizarDisplayCronometro();
+}
+
+function reiniciarSorteo() {
+  pausarCronometroPitch();
+  state.sorteo.resultados = [];
+  state.sorteo.indiceActual = 0;
+  renderResultadosSorteo();
+  toast('🔄 Sorteo reiniciado');
+}
+
+function sonarAlarmaPitch() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioCtx = new AudioContextClass();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.6);
+  } catch (e) {}
+}
+
+function saltarAEvaluarEquipo(equipoId) {
+  navegar('calificacion-agil');
+  setTimeout(() => {
+    const selEq = $('#agilEquipo');
+    if (selEq) {
+      selEq.value = equipoId;
+      if ($('#btnCargarCalificacionAgil')) $('#btnCargarCalificacionAgil').click();
+    }
+  }, 300);
+}
+window.saltarAEvaluarEquipo = saltarAEvaluarEquipo;
+
+/* =========================================================
    7. MI EQUIPO Y MIS CALIFICACIONES (ALUMNO)
    ========================================================= */
 function renderMiEquipo() {
@@ -1925,14 +2328,11 @@ async function arrancarApp() {
     toast('🔄 Datos actualizados');
   };
 
-  // Render inicial según rol
+  // Render inicial según rol (únicamente el dashboard activo)
   if (state.sesion.tipo === 'alumno') {
     renderDashboardAlumno();
   } else {
     renderDashboardDocente();
-    // Precargar datos docentes
-    cargarGestion();
-    cargarGamificacion();
   }
 
   // Notificación motivacional de bienvenida
