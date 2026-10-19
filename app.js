@@ -25,6 +25,24 @@ const FRASES_MOTIVACIONALES = [
   { frase: "Los grandes logros de cualquier organización son el resultado del esfuerzo combinado de cada individuo.", autor: "Vince Lombardi" }
 ];
 
+const RECURSOS_INICIALES = [
+  { titulo: 'Canva', url: 'https://www.canva.com/', categoria: 'Diseño', icono: '🎨', activo: true },
+  { titulo: 'Figma', url: 'https://figma.com', categoria: 'Diseño UX', icono: '🎨', activo: true },
+  { titulo: 'Carrd', url: 'https://carrd.co/', categoria: 'Diseño Web', icono: '🎨', activo: true },
+  { titulo: 'Netlify', url: 'https://www.netlify.com/', categoria: 'Hosting', icono: '☁️', activo: true },
+  { titulo: 'Vercel', url: 'https://vercel.com/', categoria: 'Hosting', icono: '☁️', activo: true },
+  { titulo: 'Sesión de Cierre de Curso', url: 'https://drive.google.com/file/d/1wmGV8GIeYDU2AuZ4VY3g5cQipIjZxQhx/view?usp=sharing', categoria: 'lineamientos', icono: '📋', activo: true },
+  { titulo: 'Lineamientos 3er bimestre', url: 'https://drive.google.com/file/d/1pfDaJkqsan5jo-GvQNLGfeGBa6QhBChJ/view?usp=sharing', categoria: 'lineamientos', icono: '📋', activo: true },
+  { titulo: 'Rúbrica de evaluación individual', url: 'https://drive.google.com/file/d/15R9cgoCFlY1qD-JjFEcYoalJyg5aHbnv/view?usp=sharing', categoria: 'rubrica', icono: '📝', activo: true },
+  { titulo: 'Rúbrica de evaluación grupal', url: '', categoria: 'rubrica', icono: '📝', activo: true },
+  { titulo: 'Notion', url: 'https://www.notion.com/', categoria: 'Productividad', icono: '🛠️', activo: true },
+  { titulo: 'Trello', url: 'https://trello.com/', categoria: 'Productividad', icono: '🗂️', activo: true },
+  { titulo: 'Google Forms', url: 'https://docs.google.com/forms/', categoria: 'Productividad', icono: '📝', activo: true },
+  { titulo: 'Lovable', url: 'https://lovable.dev/invite/VQOV1GA', categoria: 'Desarrollo App', icono: '🛠️', activo: true },
+  { titulo: 'WebFlow', url: 'https://webflow.com/', categoria: 'Diseño Web', icono: '🎨', activo: true },
+  { titulo: 'ElfSight', url: 'https://elfsight.com/', categoria: 'ChatBot', icono: '🛠️', activo: true }
+];
+
 let state = {
   sesion: null,
   plan: [],
@@ -39,6 +57,8 @@ let state = {
   puntosExtra: [],
   rubricaGrupal: [],
   rubricaIndividual: [],
+  recursos: [],
+  filtroCategoriaRecurso: '',
   semanaSeleccionadaAlumno: 1,
   sorteo: {
     resultados: [],
@@ -291,6 +311,7 @@ const TITULOS = {
   ranking: 'Ranking de Equipos',
   'ranking-individual': 'Ranking Individual XP',
   plan: 'Matriz Curricular (Plan Data)',
+  recursos: 'Centro de Recursos y Herramientas',
   acerca: 'Acerca de'
 };
 
@@ -318,6 +339,7 @@ function navegar(view) {
   if (view === 'mi-equipo') renderMiEquipo();
   if (view === 'mis-notas') cargarMisNotasAlumno();
   if (view === 'plan') renderPlan();
+  if (view === 'recursos') inicializarRecursos();
 
   if (window.innerWidth < 900) $('#sidebar').classList.remove('open');
 }
@@ -2174,7 +2196,233 @@ function renderPlan() {
 }
 
 /* =========================================================
-   10. MODAL GENÉRICO
+   10. CENTRO DE RECURSOS Y HERRAMIENTAS
+   ========================================================= */
+async function inicializarRecursos() {
+  if (!state.recursos || !state.recursos.length) {
+    state.recursos = [...RECURSOS_INICIALES];
+  }
+
+  const inputBusqueda = $('#busquedaRecursosInput');
+  if (inputBusqueda && !inputBusqueda._iniciado) {
+    inputBusqueda._iniciado = true;
+    inputBusqueda.oninput = () => renderRecursos();
+  }
+
+  const btnRecargar = $('#btnRecargarRecursos');
+  if (btnRecargar && !btnRecargar._iniciado) {
+    btnRecargar._iniciado = true;
+    btnRecargar.onclick = recargarRecursos;
+  }
+
+  // Render inicial inmediato
+  renderRecursos();
+
+  // Sincronizar en segundo plano con Google Sheets
+  try {
+    const data = await apiGet('recursos');
+    if (data && data.recursos && data.recursos.length > 0) {
+      state.recursos = data.recursos.map(r => ({
+        titulo: String(r.titulo || '').trim(),
+        url: String(r.url || '').trim(),
+        categoria: String(r.categoria || '').trim(),
+        icono: String(r.icono || '').trim() || '🔗',
+        activo: r.activo === true || String(r.activo).toUpperCase() === 'TRUE' || r.activo === undefined || r.activo === ''
+      })).filter(r => r.titulo && r.activo);
+      renderRecursos();
+    }
+  } catch (e) {
+    console.log('Usando recursos predeterminados (offline/local):', e.message);
+  }
+}
+
+async function recargarRecursos() {
+  toast('🔄 Actualizando recursos desde Google Sheets...');
+  try {
+    const data = await apiGet('recursos');
+    if (data && data.recursos && data.recursos.length > 0) {
+      state.recursos = data.recursos.map(r => ({
+        titulo: String(r.titulo || '').trim(),
+        url: String(r.url || '').trim(),
+        categoria: String(r.categoria || '').trim(),
+        icono: String(r.icono || '').trim() || '🔗',
+        activo: r.activo === true || String(r.activo).toUpperCase() === 'TRUE' || r.activo === undefined || r.activo === ''
+      })).filter(r => r.titulo && r.activo);
+      toast('✅ Recursos actualizados correctamente');
+    } else {
+      toast('ℹ️ No se encontraron recursos en la hoja');
+    }
+  } catch (e) {
+    toast('⚠️ Error al consultar hoja Recursos: ' + e.message);
+  }
+  renderRecursos();
+}
+
+function esRecursoDestacado(r) {
+  const c = String(r.categoria || '').toLowerCase().trim();
+  return c === 'rubrica' || c === 'rúbrica' || c === 'lineamientos' || c === 'lineamiento';
+}
+
+function renderRecursos() {
+  const todos = (state.recursos && state.recursos.length) ? state.recursos : RECURSOS_INICIALES;
+  const busqueda = ($('#busquedaRecursosInput')?.value || '').toLowerCase().trim();
+  const filtroCat = state.filtroCategoriaRecurso || '';
+
+  // 1. Filtrar destacados (Rúbricas y Lineamientos)
+  const destacados = todos.filter(r => {
+    if (!esRecursoDestacado(r)) return false;
+    if (!busqueda) return true;
+    return r.titulo.toLowerCase().includes(busqueda) ||
+           r.categoria.toLowerCase().includes(busqueda);
+  });
+
+  const contenedorDestacados = $('#contenedorRecursosDestacados');
+  if (contenedorDestacados) {
+    if (!destacados.length) {
+      contenedorDestacados.innerHTML = `
+        <div class="vacio-box" style="grid-column: 1 / -1; padding: 20px;">
+          <p>No se encontraron documentos o lineamientos para la búsqueda.</p>
+        </div>`;
+    } else {
+      contenedorDestacados.innerHTML = destacados.map(d => {
+        const catLower = d.categoria.toLowerCase();
+        const esRubrica = catLower.includes('rubrica') || catLower.includes('rúbrica');
+        const cardClass = esRubrica ? 'card-recurso-destacado tipo-rubrica' : 'card-recurso-destacado';
+        const badgeTexto = esRubrica ? '📝 Rúbrica de Evaluación' : '📋 Lineamientos Oficiales';
+        const icono = d.icono || (esRubrica ? '📝' : '📋');
+        const tieneUrl = Boolean(d.url && d.url.trim().length > 0 && d.url.startsWith('http'));
+
+        let btnHtml = '';
+        let desc = '';
+
+        if (esRubrica) {
+          desc = 'Criterios e indicadores oficiales para verificar desempeños en la PC según la Ley 32172.';
+          if (tieneUrl) {
+            btnHtml = `<a href="${d.url}" target="_blank" rel="noopener noreferrer" class="btn-destacado btn-rubrica">
+              📄 Abrir Rúbrica en Google Drive ↗
+            </a>`;
+          } else {
+            btnHtml = `<button class="btn-destacado btn-disabled" title="El docente compartirá el enlace oficial próximamente">
+              ⏳ Rúbrica en preparación / Próximamente
+            </button>`;
+          }
+        } else {
+          desc = 'Orientaciones pedagógicas, fechas clave y entregables programados para el área de EPT.';
+          if (tieneUrl) {
+            btnHtml = `<a href="${d.url}" target="_blank" rel="noopener noreferrer" class="btn-destacado btn-drive">
+              📂 Ver Lineamiento en Google Drive ↗
+            </a>`;
+          } else {
+            btnHtml = `<button class="btn-destacado btn-disabled">
+              ⏳ Documento en preparación
+            </button>`;
+          }
+        }
+
+        return `
+          <div class="${cardClass}">
+            <div>
+              <div class="destacado-top">
+                <div class="destacado-icon">${icono}</div>
+                <span class="badge-destacado">${badgeTexto}</span>
+              </div>
+              <h4 class="destacado-titulo">${d.titulo}</h4>
+              <p class="destacado-desc">${desc}</p>
+            </div>
+            <div style="margin-top:auto">
+              ${btnHtml}
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  // 2. Fichas Simples (Herramientas y Plataformas Web)
+  const herramientas = todos.filter(r => !esRecursoDestacado(r));
+
+  // Obtener categorías únicas de las herramientas
+  const categoriasUnicas = [...new Set(herramientas.map(h => h.categoria).filter(Boolean))].sort();
+
+  // Renderizar barra de filtros
+  const filtrosCont = $('#filtrosCategoriasRecursos');
+  if (filtrosCont) {
+    const chipTodasActivo = !filtroCat ? 'active' : '';
+    let chipsHtml = `
+      <button class="chip-filtro-recurso ${chipTodasActivo}" onclick="seleccionarCategoriaRecurso('')">
+        🌟 Todas (${herramientas.length})
+      </button>`;
+
+    categoriasUnicas.forEach(cat => {
+      const count = herramientas.filter(h => h.categoria === cat).length;
+      const activoClass = filtroCat === cat ? 'active' : '';
+      chipsHtml += `
+        <button class="chip-filtro-recurso ${activoClass}" onclick="seleccionarCategoriaRecurso('${cat}')">
+          ${cat} (${count})
+        </button>`;
+    });
+
+    filtrosCont.innerHTML = chipsHtml;
+  }
+
+  // Filtrar herramientas por categoría y búsqueda
+  const herramientasFiltradas = herramientas.filter(h => {
+    if (filtroCat && h.categoria !== filtroCat) return false;
+    if (!busqueda) return true;
+    return h.titulo.toLowerCase().includes(busqueda) ||
+           h.categoria.toLowerCase().includes(busqueda) ||
+           (h.url && h.url.toLowerCase().includes(busqueda));
+  });
+
+  const contadorEl = $('#contadorRecursosSimples');
+  if (contadorEl) {
+    contadorEl.textContent = `${herramientasFiltradas.length} herramientas`;
+  }
+
+  const contenedorSimples = $('#contenedorRecursosSimples');
+  if (contenedorSimples) {
+    if (!herramientasFiltradas.length) {
+      contenedorSimples.innerHTML = `
+        <div class="vacio-box" style="grid-column: 1 / -1; padding: 24px;">
+          <p>No se encontraron herramientas que coincidan con la búsqueda o filtro seleccionado.</p>
+        </div>`;
+    } else {
+      contenedorSimples.innerHTML = herramientasFiltradas.map(h => {
+        const icono = h.icono || '🛠️';
+        const urlSegura = h.url || '#';
+        const tieneUrl = Boolean(h.url && h.url.trim().length > 0 && h.url.startsWith('http'));
+
+        return `
+          <div class="ficha-recurso-simple">
+            <div class="ficha-simple-header">
+              <div class="ficha-simple-icon">${icono}</div>
+              <div class="ficha-simple-info">
+                <h4 class="ficha-simple-titulo" title="${h.titulo}">${h.titulo}</h4>
+                <span class="ficha-simple-categoria">${h.categoria}</span>
+              </div>
+            </div>
+            <div>
+              ${tieneUrl ? `
+                <a href="${urlSegura}" target="_blank" rel="noopener noreferrer" class="btn-abrir-recurso">
+                  Abrir herramienta ↗
+                </a>
+              ` : `
+                <span class="btn-abrir-recurso" style="opacity:0.6;cursor:default">Enlace no disponible</span>
+              `}
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+}
+
+function seleccionarCategoriaRecurso(cat) {
+  state.filtroCategoriaRecurso = cat;
+  renderRecursos();
+}
+window.seleccionarCategoriaRecurso = seleccionarCategoriaRecurso;
+
+/* =========================================================
+   11. MODAL GENÉRICO
    ========================================================= */
 function abrirModalGenerico({ title, campos, onSave }) {
   $('#modalTitle').textContent = title;
