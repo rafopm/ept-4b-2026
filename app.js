@@ -7,7 +7,6 @@ const API_URL = window.APP_CONFIG.API_URL;
 const STORAGE_SESION = 'emprende_sesion_v2';
 const STORAGE_TOKEN = 'google_id_token';
 const STORAGE_OFFLINE_PUNTOS = 'emprende_offline_puntos_extra';
-const STORAGE_OFFLINE_EVIDENCIAS = 'emprende_offline_evidencias';
 
 // Frases motivacionales de innovación, emprendimiento y perseverancia
 const FRASES_MOTIVACIONALES = [
@@ -411,6 +410,18 @@ function escaparHtml(valor) {
   })[caracter]);
 }
 
+function enlacePlanHtml(url, texto) {
+  const valor = String(url || '').trim();
+  if (!valor) return '';
+  try {
+    const destino = new URL(valor);
+    if (!['http:', 'https:'].includes(destino.protocol)) return '';
+    return `<a href="${escaparHtml(destino.href)}" target="_blank" rel="noopener noreferrer">${escaparHtml(texto)} ↗</a>`;
+  } catch (error) {
+    return '';
+  }
+}
+
 function semanasDisponiblesPlan() {
   const semanas = new Set([1, 2, 3, 4, 5, 6]);
   state.plan.forEach(fila => {
@@ -510,6 +521,10 @@ function renderDashboardAlumno() {
     $('#dashAlumnoLey').textContent = planFila.Notas_Ley32172 || 'Uso computadoras IE. Sin celulares.';
     $('#dashAlumnoProyectoNombre').textContent = planFila.Proyecto || equipo.proyecto;
     $('#dashAlumnoTecnologia').textContent = 'Tecnología: ' + (planFila.Tecnologia || 'Herramientas Digitales');
+    $('#dashAlumnoGuiaAprendizaje').innerHTML = enlacePlanHtml(
+      planFila.Link_Guia_Aprendizaje,
+      'Abrir guía de aprendizaje'
+    );
 
     // Red de Seguridad / Backup
     const backupResponsabilidad = planFila.Responsabilidad_Backup || 'Si tu compañero falla, debes cubrir su tarea.';
@@ -521,6 +536,7 @@ function renderDashboardAlumno() {
     $('#dashAlumnoTemaSemanal').textContent = `Semana ${semana}`;
     $('#dashAlumnoTareaDetallada').textContent = 'Consigna en preparación para tu rol esta semana.';
     $('#dashAlumnoEntregableEspecifico').textContent = 'Presentar avance en la computadora del laboratorio.';
+    $('#dashAlumnoGuiaAprendizaje').innerHTML = '';
     $('#dashAlumnoBackupResponsabilidad').textContent = 'Mantener coordinación activa en el tablero Trello.';
   }
 
@@ -539,45 +555,46 @@ function renderDashboardAlumno() {
 }
 
 function verificarEvidenciaCargadaAlumno(semana) {
-  const correo = state.sesion.correo.toLowerCase();
+  const correo = state.sesion.correo.toLowerCase().trim();
   const eqId = state.sesion.alumno?.equipo_id;
-
-  // Buscar en evidencias de state o en localStorage offline
-  let ev = state.evidencias.find(e =>
-    String(e.equipo_id) === String(eqId) &&
+  const ev = state.evidencias.find(e =>
+    String(e.equipo_id).trim() === String(eqId).trim() &&
     Number(e.semana) === Number(semana) &&
-    String(e.correo_alumno).toLowerCase() === correo
+    String(e.correo_alumno).toLowerCase().trim() === correo
   );
-
-  if (!ev) {
-    try {
-      const offline = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_EVIDENCIAS) || '[]');
-      ev = offline.find(e =>
-        String(e.equipo_id) === String(eqId) &&
-        Number(e.semana) === Number(semana) &&
-        String(e.correo_alumno).toLowerCase() === correo
-      );
-    } catch (e) {}
-  }
 
   const contenedor = $('#estadoEvidenciaCargada');
   const linkEl = $('#linkEvidenciaActual');
   const fechaEl = $('#fechaEvidenciaActual');
   const inputLink = $('#inputLinkEvidencia');
   const inputCom = $('#inputComentarioEvidencia');
+  const inputFile = $('#inputFileEvidencia');
+  const inputComentarioArchivo = $('#inputComentarioArchivo');
+  const bloqueada = Boolean(ev && ev.link_evidencia);
 
-  if (ev && ev.link_evidencia) {
+  if (bloqueada) {
     contenedor.style.display = 'flex';
     linkEl.href = ev.link_evidencia;
     linkEl.textContent = ev.link_evidencia;
     fechaEl.textContent = ev.fecha ? `Registrado: ${new Date(ev.fecha).toLocaleString('es-PE')}` : 'Registrado';
+    $('#mensajeEntregaBloqueada').style.display = 'block';
     inputLink.value = ev.link_evidencia;
     inputCom.value = ev.comentario_alumno || '';
   } else {
     contenedor.style.display = 'none';
+    $('#mensajeEntregaBloqueada').style.display = 'none';
     inputLink.value = '';
     inputCom.value = '';
   }
+
+  inputLink.disabled = bloqueada;
+  inputCom.disabled = bloqueada;
+  inputFile.disabled = bloqueada;
+  inputComentarioArchivo.disabled = bloqueada;
+  $('#btnGuardarEvidencia').disabled = bloqueada;
+  $('#btnSubirArchivoDrive').disabled = bloqueada;
+  $('#btnTabModoLink').disabled = bloqueada;
+  $('#btnTabModoArchivo').disabled = bloqueada;
 }
 
 async function guardarEvidenciaAlumno(e) {
@@ -586,6 +603,16 @@ async function guardarEvidenciaAlumno(e) {
   const comentario = $('#inputComentarioEvidencia').value.trim();
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
   const alumno = state.sesion.alumno;
+
+  if (state.evidencias.some(ev =>
+    String(ev.equipo_id).trim() === String(alumno.equipo_id).trim() &&
+    Number(ev.semana) === semana &&
+    String(ev.correo_alumno).toLowerCase().trim() === state.sesion.correo.toLowerCase().trim()
+  )) {
+    toast('⚠️ Ya enviaste esta entrega. No puedes modificarla ni volver a enviarla.');
+    verificarEvidenciaCargadaAlumno(semana);
+    return;
+  }
 
   if (!link) { toast('⚠️ Ingresa el enlace de tu evidencia'); return; }
 
@@ -603,36 +630,21 @@ async function guardarEvidenciaAlumno(e) {
     $('#btnGuardarEvidencia').disabled = true;
     $('#btnGuardarEvidencia').textContent = '⏳ Guardando...';
 
-    // Guardar en state y offline backup de inmediato
+    const respuesta = await apiPost('guardar-evidencia', payload);
     state.evidencias = state.evidencias.filter(x =>
       !(String(x.equipo_id) === String(payload.equipo_id) &&
         Number(x.semana) === Number(payload.semana) &&
         String(x.correo_alumno).toLowerCase() === payload.correo_alumno.toLowerCase())
     );
-    state.evidencias.push(payload);
-
-    try {
-      const offline = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_EVIDENCIAS) || '[]');
-      const filtrados = offline.filter(x =>
-        !(String(x.equipo_id) === String(payload.equipo_id) &&
-          Number(x.semana) === Number(payload.semana) &&
-          String(x.correo_alumno).toLowerCase() === payload.correo_alumno.toLowerCase())
-      );
-      filtrados.push(payload);
-      localStorage.setItem(STORAGE_OFFLINE_EVIDENCIAS, JSON.stringify(filtrados));
-    } catch (err) {}
-
-    // Enviar al backend
-    await apiPost('guardar-evidencia', payload);
+    state.evidencias.push({ ...payload, fecha: respuesta.fecha || payload.fecha });
     toast('✅ Evidencia guardada exitosamente');
     verificarEvidenciaCargadaAlumno(semana);
   } catch (err) {
-    // Si falla el backend, el fallback local ya preservó la entrega
-    toast('✅ Evidencia registrada en tu sesión local');
-    verificarEvidenciaCargadaAlumno(semana);
+    toast('❌ No se pudo registrar la evidencia: ' + err.message);
   } finally {
     $('#btnGuardarEvidencia').disabled = false;
     $('#btnGuardarEvidencia').textContent = '📤 Guardar Enlace';
+    verificarEvidenciaCargadaAlumno(semana);
   }
 }
 
@@ -644,6 +656,16 @@ async function subirArchivoDriveAlumno(e) {
   const alumno = state.sesion.alumno;
   const equipoId = alumno.equipo_id || state.sesion.equipo?.id || state.sesion.equipo?.equipo_id || '';
   const correoAlumno = state.sesion.correo || alumno.correo || '';
+
+  if (state.evidencias.some(ev =>
+    String(ev.equipo_id).trim() === String(equipoId).trim() &&
+    Number(ev.semana) === semana &&
+    String(ev.correo_alumno).toLowerCase().trim() === correoAlumno.toLowerCase().trim()
+  )) {
+    toast('⚠️ Ya enviaste esta entrega. No puedes modificarla ni volver a enviarla.');
+    verificarEvidenciaCargadaAlumno(semana);
+    return;
+  }
 
   if (!fileInput.files || !fileInput.files.length) {
     toast('⚠️ Selecciona un archivo de tu computadora');
@@ -727,22 +749,22 @@ async function subirArchivoDriveAlumno(e) {
           : errApi.message;
         toast('❌ Error subiendo a Drive: ' + mensaje);
       } finally {
-        btnSubir.disabled = false;
+        verificarEvidenciaCargadaAlumno(semana);
         progress.style.display = 'none';
       }
     };
 
     reader.onerror = () => {
       toast('❌ Error leyendo el archivo local');
-      btnSubir.disabled = false;
       progress.style.display = 'none';
+      verificarEvidenciaCargadaAlumno(semana);
     };
 
     reader.readAsDataURL(file);
 
   } catch (err) {
-    btnSubir.disabled = false;
     progress.style.display = 'none';
+    verificarEvidenciaCargadaAlumno(semana);
     toast('❌ ' + err.message);
   }
 }
@@ -2318,6 +2340,9 @@ function renderRankingIndividual() {
    ========================================================= */
 function renderPlan() {
   const d = datosFiltrados();
+  const esDocente = state.sesion?.tipo === 'docente';
+  const columnaRecurso = $('#thPlanRecurso');
+  columnaRecurso.textContent = esDocente ? 'Material docente' : 'Guía de aprendizaje';
   $('#tablaPlan tbody').innerHTML = d.map(x => `
     <tr>
       <td><b>${x.Grado}</b></td>
@@ -2328,6 +2353,10 @@ function renderPlan() {
       <td>${x.Entregable_Especifico}</td>
       <td><b>${x.Rol_Backup || '—'}</b></td>
       <td style="font-size:12px;color:#555">${x.Responsabilidad_Backup || '—'}</td>
+      <td>${enlacePlanHtml(
+        esDocente ? x.Link_Presentacion : x.Link_Guia_Aprendizaje,
+        esDocente ? 'Abrir presentación' : 'Abrir guía'
+      ) || '—'}</td>
     </tr>`).join('');
 }
 
@@ -2631,12 +2660,14 @@ async function init() {
   // Tabs de modo entrega (Link web o Archivo Drive)
   if ($('#btnTabModoLink') && $('#btnTabModoArchivo')) {
     $('#btnTabModoLink').onclick = () => {
+      if ($('#btnTabModoLink').disabled) return;
       $('#btnTabModoLink').classList.add('active');
       $('#btnTabModoArchivo').classList.remove('active');
       $('#formEvidenciaAlumno').style.display = 'block';
       $('#formArchivoAlumno').style.display = 'none';
     };
     $('#btnTabModoArchivo').onclick = () => {
+      if ($('#btnTabModoArchivo').disabled) return;
       $('#btnTabModoArchivo').classList.add('active');
       $('#btnTabModoLink').classList.remove('active');
       $('#formEvidenciaAlumno').style.display = 'none';
@@ -2651,7 +2682,17 @@ async function init() {
   restaurarSesion();
   if (state.sesion) {
     try {
-      await apiGet('login', { correo: state.sesion.correo });
+      const login = await apiGet('login', { correo: state.sesion.correo });
+      if (login.tipo === 'alumno') {
+        state.sesion = {
+          ...state.sesion,
+          alumno: login.alumno,
+          equipo: login.equipo
+        };
+        state.evidencias = Array.isArray(login.evidencias) ? login.evidencias : [];
+        state.puntosExtra = Array.isArray(login.puntos_extra) ? login.puntos_extra : [];
+        localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
+      }
     } catch (e) {
       if (!invalidarSesionPorToken(e.message)) {
         console.error('No se pudo validar sesión guardada:', e);
