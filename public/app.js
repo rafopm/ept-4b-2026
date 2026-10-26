@@ -24,6 +24,7 @@ const FRASES_MOTIVACIONALES = [
   { frase: "La tecnología es mejor cuando une a las personas.", autor: "Matt Mullenweg" },
   { frase: "Los grandes logros de cualquier organización son el resultado del esfuerzo combinado de cada individuo.", autor: "Vince Lombardi" }
 ];
+let frasesMotivacionales = FRASES_MOTIVACIONALES;
 
 const RECURSOS_INICIALES = [
   { titulo: 'Canva', url: 'https://www.canva.com/', categoria: 'Diseño', icono: '🎨', activo: true },
@@ -246,6 +247,17 @@ function mostrarApp() {
   document.body.classList.toggle('es-alumno', state.sesion.tipo === 'alumno');
   document.body.classList.toggle('es-docente', state.sesion.tipo === 'docente');
 
+  const contextoAlumno = $('#contextoAlumno');
+  if (contextoAlumno && state.sesion.tipo === 'alumno') {
+    const alumno = state.sesion.alumno || {};
+    const equipo = state.sesion.equipo || {};
+    const grado = alumno.grado || equipo.grado;
+    const seccion = alumno.seccion || equipo.seccion;
+    contextoAlumno.textContent = [grado, seccion ? `Sección ${seccion}` : '']
+      .filter(Boolean)
+      .join(' · ');
+  }
+
   $('#sidebarNombre').textContent = state.sesion.nombre || state.sesion.correo;
   $('#sidebarRol').textContent = state.sesion.tipo === 'docente'
     ? '👩‍🏫 Docente'
@@ -317,7 +329,7 @@ const TITULOS = {
 
 function navegar(view) {
   if (state.sesion.tipo === 'alumno' &&
-      (view === 'calificacion-agil' || view === 'gestion-equipos' || view === 'gamificacion' || view === 'reportes')) return;
+      (view === 'calificacion-agil' || view === 'gestion-equipos' || view === 'gamificacion' || view === 'reportes' || view === 'sorteo')) return;
   if (state.sesion.tipo === 'docente' &&
       (view === 'mi-equipo' || view === 'mis-notas')) return;
 
@@ -346,13 +358,87 @@ function navegar(view) {
 
 /* ============ MOTOR MOTIVACIONAL ============ */
 function ponerFraseMotivadoraAleatoria() {
-  const item = FRASES_MOTIVACIONALES[Math.floor(Math.random() * FRASES_MOTIVACIONALES.length)];
+  const item = frasesMotivacionales[Math.floor(Math.random() * frasesMotivacionales.length)];
   const txt = $('#textoFraseMotivadora');
   const aut = $('#autorFraseMotivadora');
   if (txt && aut) {
     txt.textContent = `"${item.frase}"`;
     aut.textContent = `— ${item.autor}`;
   }
+}
+
+async function cargarFrasesMotivacionales() {
+  try {
+    const data = await apiGet('frases');
+    const frases = Array.isArray(data.frases)
+      ? data.frases.filter(item => item && typeof item.frase === 'string' && item.frase.trim())
+      : [];
+    if (frases.length) frasesMotivacionales = frases;
+  } catch (error) {
+    console.warn('No se pudieron cargar las frases de la hoja Frases; se usarán las frases locales.', error);
+  }
+}
+
+function normalizarSemana(valor, defecto = 1) {
+  if (valor === null || valor === undefined || String(valor).trim() === '') return defecto;
+  const semana = Number(valor);
+  return Number.isFinite(semana) ? semana : defecto;
+}
+
+function normalizarGrado(valor) {
+  return String(valor || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*secundaria\s*/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function rolCoincide(rolesPlan, rolAlumno) {
+  const rolNormalizado = String(rolAlumno || '').trim().toUpperCase();
+  if (!rolNormalizado) return false;
+  return String(rolesPlan || '')
+    .split(/[,;|/]+/)
+    .some(rol => rol.trim().toUpperCase() === rolNormalizado);
+}
+
+function escaparHtml(valor) {
+  return String(valor ?? '').replace(/[&<>"']/g, caracter => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[caracter]);
+}
+
+function semanasDisponiblesPlan() {
+  const semanas = new Set([1, 2, 3, 4, 5, 6]);
+  state.plan.forEach(fila => {
+    const valor = fila.Semana;
+    if (valor === null || valor === undefined || String(valor).trim() === '') return;
+    const semana = Number(valor);
+    if (Number.isFinite(semana)) semanas.add(semana);
+  });
+  return [...semanas].sort((a, b) => a - b);
+}
+
+function actualizarSelectoresSemana() {
+  const semanas = semanasDisponiblesPlan();
+  ['#dashAlumnoSemanaSelect', '#agilSemana'].forEach(selector => {
+    const select = $(selector);
+    if (!select) return;
+
+    const semanaActual = normalizarSemana(select.value);
+    select.replaceChildren(...semanas.map(semana => {
+      const opcion = document.createElement('option');
+      const fila = state.plan.find(item => normalizarSemana(item.Semana, NaN) === semana);
+      const tema = fila?.Tema_Semanal ? ` · ${fila.Tema_Semanal}` : '';
+      opcion.value = String(semana);
+      opcion.textContent = `Semana ${semana}${tema}`;
+      return opcion;
+    }));
+    select.value = String(semanas.includes(semanaActual) ? semanaActual : 1);
+  });
 }
 
 /* ============ CARGAS DE DATOS ============ */
@@ -368,7 +454,9 @@ async function cargarPlan() {
 
 async function cargarRanking() {
   try {
-    const seccion = $('#filtroSeccion').value || '';
+    const seccion = state.sesion?.tipo === 'alumno'
+      ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
+      : $('#filtroSeccion').value || '';
     const data = await apiGet('ranking', seccion ? { seccion } : {});
     state.ranking = data.ranking || [];
     renderRanking();
@@ -379,7 +467,9 @@ async function cargarRanking() {
 
 async function cargarRankingIndividual() {
   try {
-    const seccion = $('#filtroSeccion').value || '';
+    const seccion = state.sesion?.tipo === 'alumno'
+      ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
+      : $('#filtroSeccion').value || '';
     const data = await apiGet('ranking-individual', seccion ? { seccion } : {});
     state.rankingIndividual = data.ranking || [];
     renderRankingIndividual();
@@ -397,7 +487,7 @@ function renderDashboardAlumno() {
 
   const alumno = state.sesion.alumno;
   const equipo = state.sesion.equipo;
-  const semana = Number(state.semanaSeleccionadaAlumno) || 1;
+  const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
 
   // Header del alumno
   $('#dashAlumnoBadgeRol').textContent = alumno.rol || 'CEO';
@@ -408,9 +498,9 @@ function renderDashboardAlumno() {
   // Buscar tarea en el Plan Semanal
   const gradoNormalizado = String(alumno.grado || equipo.grado || '').trim();
   const planFila = state.plan.find(p =>
-    String(p.Grado).trim() === gradoNormalizado &&
+    normalizarGrado(p.Grado) === normalizarGrado(gradoNormalizado) &&
     Number(p.Semana) === semana &&
-    String(p.Rol).trim().toUpperCase() === String(alumno.rol).trim().toUpperCase()
+    rolCoincide(p.Rol, alumno.rol)
   );
 
   if (planFila) {
@@ -494,7 +584,7 @@ async function guardarEvidenciaAlumno(e) {
   e.preventDefault();
   const link = $('#inputLinkEvidencia').value.trim();
   const comentario = $('#inputComentarioEvidencia').value.trim();
-  const semana = Number(state.semanaSeleccionadaAlumno) || 1;
+  const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
   const alumno = state.sesion.alumno;
 
   if (!link) { toast('⚠️ Ingresa el enlace de tu evidencia'); return; }
@@ -550,8 +640,10 @@ async function subirArchivoDriveAlumno(e) {
   e.preventDefault();
   const fileInput = $('#inputFileEvidencia');
   const comentario = $('#inputComentarioArchivo').value.trim();
-  const semana = Number(state.semanaSeleccionadaAlumno) || 1;
+  const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
   const alumno = state.sesion.alumno;
+  const equipoId = alumno.equipo_id || state.sesion.equipo?.id || state.sesion.equipo?.equipo_id || '';
+  const correoAlumno = state.sesion.correo || alumno.correo || '';
 
   if (!fileInput.files || !fileInput.files.length) {
     toast('⚠️ Selecciona un archivo de tu computadora');
@@ -577,13 +669,13 @@ async function subirArchivoDriveAlumno(e) {
     reader.onload = async (event) => {
       try {
         const dataUrl = event.target.result;
-        const base64Data = dataUrl.split(',')[1];
+        const base64Data = typeof dataUrl === 'string' ? dataUrl.split(',')[1] : '';
         const mimeType = file.type || 'application/octet-stream';
 
         const payload = {
-          equipo_id: alumno.equipo_id,
+          equipo_id: equipoId,
           semana: semana,
-          correo_alumno: state.sesion.correo,
+          correo_alumno: correoAlumno,
           rol: alumno.rol || 'CEO',
           nombre_archivo: file.name,
           mime_type: mimeType,
@@ -592,14 +684,25 @@ async function subirArchivoDriveAlumno(e) {
           fecha: new Date().toISOString()
         };
 
+        const datosFaltantes = [
+          !payload.equipo_id && 'equipo_id',
+          !Number.isInteger(payload.semana) && 'semana',
+          !payload.correo_alumno && 'correo_alumno',
+          !payload.nombre_archivo && 'nombre_archivo',
+          !payload.base64_data && 'base64_data'
+        ].filter(Boolean);
+        if (datosFaltantes.length) {
+          throw new Error(`No se pudo preparar el archivo. Faltan datos: ${datosFaltantes.join(', ')}`);
+        }
+
         const resp = await apiPost('subir-archivo', payload);
         const driveUrl = resp.url || ('https://drive.google.com/drive/u/0/search?q=' + encodeURIComponent(file.name));
 
         // Registrar en state local
         const evItem = {
-          equipo_id: alumno.equipo_id,
+          equipo_id: equipoId,
           semana: semana,
-          correo_alumno: state.sesion.correo,
+          correo_alumno: correoAlumno,
           rol: alumno.rol || 'CEO',
           link_evidencia: driveUrl,
           comentario_alumno: comentario || `Archivo subido a Drive: ${file.name}`,
@@ -619,7 +722,10 @@ async function subirArchivoDriveAlumno(e) {
         $('#inputComentarioArchivo').value = '';
 
       } catch (errApi) {
-        toast('❌ Error subiendo a Drive: ' + errApi.message);
+        const mensaje = semana === 0 && errApi.message.includes('Faltan datos obligatorios para subir archivo')
+          ? 'El backend publicado todavía rechaza la semana 0. Actualiza y vuelve a desplegar code.gs en Apps Script.'
+          : errApi.message;
+        toast('❌ Error subiendo a Drive: ' + mensaje);
       } finally {
         btnSubir.disabled = false;
         progress.style.display = 'none';
@@ -656,10 +762,18 @@ function renderDashboardDocente() {
 }
 
 function datosFiltrados() {
-  const seccion = $('#filtroSeccion').value;
-  const grado = $('#filtroGrado').value;
+  const esAlumno = state.sesion?.tipo === 'alumno';
+  const seccion = esAlumno
+    ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
+    : $('#filtroSeccion').value;
+  const grado = esAlumno
+    ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || ''
+    : $('#filtroGrado').value;
+  const rol = esAlumno ? state.sesion.alumno?.rol : '';
   return state.plan.filter(f =>
-    (!grado || f.Grado === grado)
+    (!grado || normalizarGrado(f.Grado) === normalizarGrado(grado)) &&
+    (!seccion || !f.Seccion || String(f.Seccion).trim() === String(seccion).trim()) &&
+    (!rol || rolCoincide(f.Rol, rol))
   );
 }
 
@@ -680,7 +794,7 @@ function renderKPIs() {
 function renderMatriz() {
   const d = state.plan;
   const grados = [...new Set(d.map(x => x.Grado))].sort();
-  const semanas = [1, 2, 3, 4, 5, 6];
+  const semanas = semanasDisponiblesPlan();
   const m = {};
   grados.forEach(g => { m[g] = {}; semanas.forEach(s => m[g][s] = 0); });
   d.forEach(x => {
@@ -761,7 +875,7 @@ async function inicializarCalificacionAgil() {
 
 async function cargarCalificacionAgil() {
   const eqId = $('#agilEquipo').value;
-  const semana = Number($('#agilSemana').value) || 1;
+  const semana = normalizarSemana($('#agilSemana').value);
 
   if (!eqId) { toast('⚠️ Por favor selecciona un equipo'); return; }
 
@@ -867,7 +981,7 @@ function renderPanelCalificacionAgil() {
   } else {
     contAlumnos.innerHTML = miembros.map(al => {
       const rolUpper = String(al.rol || 'CEO').toUpperCase();
-      const planRol = planSemana.find(p => String(p.Rol).toUpperCase() === rolUpper) || {};
+      const planRol = planSemana.find(p => rolCoincide(p.Rol, rolUpper)) || {};
       const evAl = evidencias.find(e => String(e.correo_alumno).toLowerCase() === String(al.correo).toLowerCase());
       
       const prevInd = datosApi?.calificaciones_individuales_existentes?.find(x =>
@@ -2069,6 +2183,24 @@ async function cargarMisNotasAlumno() {
   try {
     const data = await apiGet('mi-nota', { correo });
     const porSemana = data.porSemana || [];
+    const tareasPlan = datosFiltrados().sort((a, b) =>
+      normalizarSemana(a.Semana) - normalizarSemana(b.Semana)
+    );
+    const tareasPlanHTML = tareasPlan.length
+      ? `<div class="tabla-wrap">
+          <table class="tabla">
+            <thead><tr><th>Semana</th><th>Tema</th><th>Tarea de mi rol</th><th>Entregable</th></tr></thead>
+            <tbody>${tareasPlan.map(tarea => `
+              <tr>
+                <td><b>${escaparHtml(tarea.Semana)}</b></td>
+                <td>${escaparHtml(tarea.Tema_Semanal)}</td>
+                <td>${escaparHtml(tarea.Tarea_Detallada)}</td>
+                <td>${escaparHtml(tarea.Entregable_Especifico)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : '<p class="hint">No hay tareas registradas para tu grado y rol.</p>';
 
     const semanasHTML = porSemana.map(s => `
       <div class="entrega-card ${s.calificado ? 'calificada' : 'pendiente'}">
@@ -2099,6 +2231,8 @@ async function cargarMisNotasAlumno() {
           <div class="lbl">Porcentaje de Rendimiento General</div>
         </div>
       </div>
+      <h3 style="margin-bottom:12px;color:var(--azul-oscuro)">📋 Mi matriz curricular y tareas asignadas</h3>
+      ${tareasPlanHTML}
       <h3 style="margin-bottom:12px;color:var(--azul-oscuro)">Detalle Semanal de Calificaciones:</h3>
       ${semanasHTML}
     `;
@@ -2113,7 +2247,9 @@ async function cargarMisNotasAlumno() {
    ========================================================= */
 function renderRanking() {
   const tbody = $('#tablaRanking tbody');
-  const filtroSec = $('#filtroSeccion').value;
+  const filtroSec = state.sesion?.tipo === 'alumno'
+    ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
+    : $('#filtroSeccion').value;
   $('#badgeFiltroSeccion').textContent = filtroSec ? `Sección ${filtroSec}` : 'Todas las Secciones';
 
   if (!state.ranking.length) {
@@ -2487,7 +2623,7 @@ async function init() {
 
   // Dashboard alumno: cambio de semana y envío de evidencia
   $('#dashAlumnoSemanaSelect').onchange = (e) => {
-    state.semanaSeleccionadaAlumno = Number(e.target.value) || 1;
+    state.semanaSeleccionadaAlumno = normalizarSemana(e.target.value);
     renderDashboardAlumno();
   };
   $('#formEvidenciaAlumno').onsubmit = guardarEvidenciaAlumno;
@@ -2515,7 +2651,17 @@ async function init() {
   restaurarSesion();
   if (state.sesion) {
     try {
-      await apiGet('login', { correo: state.sesion.correo });
+      const login = await apiGet('login', { correo: state.sesion.correo });
+      if (login.tipo === 'alumno') {
+        state.sesion = {
+          ...state.sesion,
+          alumno: login.alumno,
+          equipo: login.equipo
+        };
+        state.evidencias = Array.isArray(login.evidencias) ? login.evidencias : [];
+        state.puntosExtra = Array.isArray(login.puntos_extra) ? login.puntos_extra : [];
+        localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
+      }
     } catch (e) {
       if (!invalidarSesionPorToken(e.message)) {
         console.error('No se pudo validar sesión guardada:', e);
@@ -2531,8 +2677,9 @@ async function init() {
 }
 
 async function arrancarApp() {
+  await Promise.all([cargarPlan(), cargarFrasesMotivacionales()]);
   ponerFraseMotivadoraAleatoria();
-  await cargarPlan();
+  actualizarSelectoresSemana();
 
   // Filtros de topbar
   const grados = [...new Set(state.plan.map(f => f.Grado))].sort();
