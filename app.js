@@ -384,6 +384,17 @@ function normalizarSemana(valor, defecto = 1) {
   return Number.isFinite(semana) ? semana : defecto;
 }
 
+function mensajeErrorEntrega(error, semana) {
+  const mensaje = error instanceof Error ? error.message : String(error || 'Error desconocido');
+  if (semana === 0 && /semana/i.test(mensaje) && /(falta|obligatori|inv[aá]lid|rango|permitid)/i.test(mensaje)) {
+    return 'El Apps Script desplegado todavía no acepta la semana 0. Actualiza code.gs y vuelve a implementar el despliegue.';
+  }
+  if (/entrega ya fue enviada/i.test(mensaje)) {
+    return 'Esta entrega ya está registrada y bloqueada. Si el envío anterior fue un error, solicita al docente que lo revise.';
+  }
+  return mensaje;
+}
+
 function normalizarGrado(valor) {
   return String(valor || '')
     .trim()
@@ -640,7 +651,7 @@ async function guardarEvidenciaAlumno(e) {
     toast('✅ Evidencia guardada exitosamente');
     verificarEvidenciaCargadaAlumno(semana);
   } catch (err) {
-    toast('❌ No se pudo registrar la evidencia: ' + err.message);
+    toast('❌ No se pudo guardar: ' + mensajeErrorEntrega(err, semana));
   } finally {
     $('#btnGuardarEvidencia').disabled = false;
     $('#btnGuardarEvidencia').textContent = '📤 Guardar Enlace';
@@ -744,9 +755,7 @@ async function subirArchivoDriveAlumno(e) {
         $('#inputComentarioArchivo').value = '';
 
       } catch (errApi) {
-        const mensaje = semana === 0 && errApi.message.includes('Faltan datos obligatorios para subir archivo')
-          ? 'El backend publicado todavía rechaza la semana 0. Actualiza y vuelve a desplegar code.gs en Apps Script.'
-          : errApi.message;
+        const mensaje = mensajeErrorEntrega(errApi, semana);
         toast('❌ Error subiendo a Drive: ' + mensaje);
       } finally {
         verificarEvidenciaCargadaAlumno(semana);
