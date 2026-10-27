@@ -8,40 +8,7 @@ const STORAGE_SESION = 'emprende_sesion_v2';
 const STORAGE_TOKEN = 'google_id_token';
 const STORAGE_OFFLINE_PUNTOS = 'emprende_offline_puntos_extra';
 
-// Frases motivacionales de innovación, emprendimiento y perseverancia
-const FRASES_MOTIVACIONALES = [
-  { frase: "El único modo de hacer un gran trabajo es amar lo que haces.", autor: "Steve Jobs" },
-  { frase: "No te preocupes por el fracaso; sólo debes acertar una vez.", autor: "Drew Houston (Dropbox)" },
-  { frase: "La perseverancia es la clave del éxito en cualquier emprendimiento digital.", autor: "Satya Nadella" },
-  { frase: "Tus clientes más insatisfechos son tu mayor fuente de aprendizaje.", autor: "Bill Gates" },
-  { frase: "El valor no está en tener ideas, sino en ejecutarlas con excelencia.", autor: "Scott Belsky (Behance)" },
-  { frase: "Si construyes un gran producto, los usuarios vendrán y lo recomendarán.", autor: "Larry Page" },
-  { frase: "El trabajo en equipo divide el trabajo y multiplica los resultados.", autor: "Anónimo" },
-  { frase: "Emprender no es tener un negocio, es resolver problemas reales para personas reales.", autor: "Guy Kawasaki" },
-  { frase: "La mejor manera de predecir el futuro es inventarlo.", autor: "Alan Kay" },
-  { frase: "Cada error superado en equipo es un paso más hacia el MVP perfecto.", autor: "Eric Ries (Lean Startup)" },
-  { frase: "La tecnología es mejor cuando une a las personas.", autor: "Matt Mullenweg" },
-  { frase: "Los grandes logros de cualquier organización son el resultado del esfuerzo combinado de cada individuo.", autor: "Vince Lombardi" }
-];
-let frasesMotivacionales = FRASES_MOTIVACIONALES;
-
-const RECURSOS_INICIALES = [
-  { titulo: 'Canva', url: 'https://www.canva.com/', categoria: 'Diseño', icono: '🎨', activo: true },
-  { titulo: 'Figma', url: 'https://figma.com', categoria: 'Diseño UX', icono: '🎨', activo: true },
-  { titulo: 'Carrd', url: 'https://carrd.co/', categoria: 'Diseño Web', icono: '🎨', activo: true },
-  { titulo: 'Netlify', url: 'https://www.netlify.com/', categoria: 'Hosting', icono: '☁️', activo: true },
-  { titulo: 'Vercel', url: 'https://vercel.com/', categoria: 'Hosting', icono: '☁️', activo: true },
-  { titulo: 'Sesión de Cierre de Curso', url: 'https://drive.google.com/file/d/1wmGV8GIeYDU2AuZ4VY3g5cQipIjZxQhx/view?usp=sharing', categoria: 'lineamientos', icono: '📋', activo: true },
-  { titulo: 'Lineamientos 3er bimestre', url: 'https://drive.google.com/file/d/1pfDaJkqsan5jo-GvQNLGfeGBa6QhBChJ/view?usp=sharing', categoria: 'lineamientos', icono: '📋', activo: true },
-  { titulo: 'Rúbrica de evaluación individual', url: 'https://drive.google.com/file/d/15R9cgoCFlY1qD-JjFEcYoalJyg5aHbnv/view?usp=sharing', categoria: 'rubrica', icono: '📝', activo: true },
-  { titulo: 'Rúbrica de evaluación grupal', url: '', categoria: 'rubrica', icono: '📝', activo: true },
-  { titulo: 'Notion', url: 'https://www.notion.com/', categoria: 'Productividad', icono: '🛠️', activo: true },
-  { titulo: 'Trello', url: 'https://trello.com/', categoria: 'Productividad', icono: '🗂️', activo: true },
-  { titulo: 'Google Forms', url: 'https://docs.google.com/forms/', categoria: 'Productividad', icono: '📝', activo: true },
-  { titulo: 'Lovable', url: 'https://lovable.dev/invite/VQOV1GA', categoria: 'Desarrollo App', icono: '🛠️', activo: true },
-  { titulo: 'WebFlow', url: 'https://webflow.com/', categoria: 'Diseño Web', icono: '🎨', activo: true },
-  { titulo: 'ElfSight', url: 'https://elfsight.com/', categoria: 'ChatBot', icono: '🛠️', activo: true }
-];
+let frasesMotivacionales = [];
 
 let state = {
   sesion: null,
@@ -201,8 +168,8 @@ async function hacerLoginConToken(correo) {
     }
 
     localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
-    mostrarApp();
     await arrancarApp();
+    mostrarApp();
   } catch (e) {
     if (errEl) errEl.textContent = '⚠️ ' + e.message;
     console.error('Error en login:', e);
@@ -357,10 +324,16 @@ function navegar(view) {
 
 /* ============ MOTOR MOTIVACIONAL ============ */
 function ponerFraseMotivadoraAleatoria() {
+  const tarjeta = $('#cardMotivacional');
+  if (!frasesMotivacionales.length) {
+    if (tarjeta) tarjeta.style.display = 'none';
+    return;
+  }
   const item = frasesMotivacionales[Math.floor(Math.random() * frasesMotivacionales.length)];
   const txt = $('#textoFraseMotivadora');
   const aut = $('#autorFraseMotivadora');
-  if (txt && aut) {
+  if (tarjeta && txt && aut) {
+    tarjeta.style.display = '';
     txt.textContent = `"${item.frase}"`;
     aut.textContent = `— ${item.autor}`;
   }
@@ -372,10 +345,12 @@ async function cargarFrasesMotivacionales() {
     const frases = Array.isArray(data.frases)
       ? data.frases.filter(item => item && typeof item.frase === 'string' && item.frase.trim())
       : [];
-    if (frases.length) frasesMotivacionales = frases;
+    frasesMotivacionales = frases;
   } catch (error) {
-    console.warn('No se pudieron cargar las frases de la hoja Frases; se usarán las frases locales.', error);
+    frasesMotivacionales = [];
+    console.warn('No se pudieron cargar las frases de la hoja Frases.', error);
   }
+  ponerFraseMotivadoraAleatoria();
 }
 
 function normalizarSemana(valor, defecto = 1) {
@@ -387,7 +362,7 @@ function normalizarSemana(valor, defecto = 1) {
 function mensajeErrorEntrega(error, semana) {
   const mensaje = error instanceof Error ? error.message : String(error || 'Error desconocido');
   if (semana === 0 && /semana/i.test(mensaje) && /(falta|obligatori|inv[aá]lid|rango|permitid)/i.test(mensaje)) {
-    return 'El Apps Script desplegado todavía no acepta la semana 0. Actualiza code.gs y vuelve a implementar el despliegue.';
+    return 'El endpoint de Apps Script configurado rechazó la semana 0. Verifica que la URL configurada corresponda a la implementación actualizada.';
   }
   if (/entrega ya fue enviada/i.test(mensaje)) {
     return 'Esta entrega ya está registrada y bloqueada. Si el envío anterior fue un error, solicita al docente que lo revise.';
@@ -434,7 +409,7 @@ function enlacePlanHtml(url, texto) {
 }
 
 function semanasDisponiblesPlan() {
-  const semanas = new Set([1, 2, 3, 4, 5, 6]);
+  const semanas = new Set();
   state.plan.forEach(fila => {
     const valor = fila.Semana;
     if (valor === null || valor === undefined || String(valor).trim() === '') return;
@@ -450,16 +425,19 @@ function actualizarSelectoresSemana() {
     const select = $(selector);
     if (!select) return;
 
-    const semanaActual = normalizarSemana(select.value);
-    select.replaceChildren(...semanas.map(semana => {
+    const semanaActual = select.value === '' ? null : normalizarSemana(select.value);
+    select.replaceChildren(...(semanas.length ? semanas.map(semana => {
       const opcion = document.createElement('option');
       const fila = state.plan.find(item => normalizarSemana(item.Semana, NaN) === semana);
       const tema = fila?.Tema_Semanal ? ` · ${fila.Tema_Semanal}` : '';
       opcion.value = String(semana);
       opcion.textContent = `Semana ${semana}${tema}`;
       return opcion;
-    }));
-    select.value = String(semanas.includes(semanaActual) ? semanaActual : 1);
+    }) : [new Option('No hay semanas cargadas', '')]));
+    const semanaPredeterminada = semanas.includes(1) ? 1 : semanas[0];
+    select.value = semanas.includes(semanaActual)
+      ? String(semanaActual)
+      : String(semanaPredeterminada ?? '');
   });
 }
 
@@ -470,7 +448,9 @@ async function cargarPlan() {
     state.plan = data.data || [];
     state.filas = state.plan;
   } catch (e) {
-    console.error('Error cargando plan:', e);
+    state.plan = [];
+    console.error('Error cargando plan desde el backend:', e);
+    toast('⚠️ No se pudo cargar el plan desde el servidor.');
   }
 }
 
@@ -510,11 +490,12 @@ function renderDashboardAlumno() {
   const alumno = state.sesion.alumno;
   const equipo = state.sesion.equipo;
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
+  const rol = alumno.rol || 'Rol no asignado';
 
   // Header del alumno
-  $('#dashAlumnoBadgeRol').textContent = alumno.rol || 'CEO';
-  $('#dashAlumnoBadgeRol').className = 'badge-rol rol-' + (alumno.rol || 'CEO');
-  $('#dashAlumnoTituloProyecto').textContent = equipo.proyecto || 'Proyecto Emprendedor';
+  $('#dashAlumnoBadgeRol').textContent = rol;
+  $('#dashAlumnoBadgeRol').className = 'badge-rol' + (alumno.rol ? ' rol-' + alumno.rol : '');
+  $('#dashAlumnoTituloProyecto').textContent = equipo.proyecto || 'Proyecto no registrado';
   $('#dashAlumnoSubtitulo').textContent = `${equipo.nombre} · ${alumno.grado || equipo.grado} · Sección ${alumno.seccion || equipo.seccion || '—'}`;
 
   // Buscar tarea en el Plan Semanal
@@ -545,8 +526,8 @@ function renderDashboardAlumno() {
     `;
   } else {
     $('#dashAlumnoTemaSemanal').textContent = `Semana ${semana}`;
-    $('#dashAlumnoTareaDetallada').textContent = 'Consigna en preparación para tu rol esta semana.';
-    $('#dashAlumnoEntregableEspecifico').textContent = 'Presentar avance en la computadora del laboratorio.';
+    $('#dashAlumnoTareaDetallada').textContent = 'No hay una tarea configurada para esta semana y rol.';
+    $('#dashAlumnoEntregableEspecifico').textContent = 'No hay un entregable configurado para esta semana.';
     $('#dashAlumnoGuiaAprendizaje').innerHTML = '';
     $('#dashAlumnoBackupResponsabilidad').textContent = 'Mantener coordinación activa en el tablero Trello.';
   }
@@ -629,7 +610,7 @@ async function guardarEvidenciaAlumno(e) {
 
   const payload = {
     equipo_id: alumno.equipo_id,
-    semana: semana,
+    semana: String(semana),
     correo_alumno: state.sesion.correo,
     rol: alumno.rol || 'CEO',
     link_evidencia: link,
@@ -707,7 +688,7 @@ async function subirArchivoDriveAlumno(e) {
 
         const payload = {
           equipo_id: equipoId,
-          semana: semana,
+          semana: String(semana),
           correo_alumno: correoAlumno,
           rol: alumno.rol || 'CEO',
           nombre_archivo: file.name,
@@ -877,23 +858,52 @@ async function inicializarCalificacionAgil() {
       state.rubricaIndividual = login.rubrica_individual || [];
     }
 
-    const secs = [...new Set(state.equipos.map(e => e.seccion).filter(Boolean))].sort();
-    $('#agilSeccion').innerHTML = '<option value="">-- Seleccionar Sección --</option>' +
-      secs.map(s => `<option value="${s}">${s}</option>`).join('');
+    const grados = [...new Set(state.equipos.map(e => String(e.grado || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    $('#agilGrado').innerHTML = '<option value="">-- Seleccionar Grado --</option>' +
+      grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+    $('#agilSeccion').innerHTML = '<option value="">-- Primero elija Grado --</option>';
+    $('#agilEquipo').innerHTML = '<option value="">-- Primero elija Grado y Sección --</option>';
+    $('#agilSeccion').disabled = true;
+    $('#agilEquipo').disabled = true;
+    $('#agilSemana').disabled = true;
+    actualizarSemanasCalificacionAgil('');
+
+    $('#agilGrado').onchange = () => {
+      const grado = $('#agilGrado').value;
+      const secciones = [...new Set(state.equipos
+        .filter(e => normalizarGrado(e.grado) === normalizarGrado(grado))
+        .map(e => String(e.seccion || '').trim())
+        .filter(Boolean))].sort();
+      $('#agilSeccion').innerHTML = '<option value="">-- Seleccionar Sección --</option>' +
+        secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+      $('#agilEquipo').innerHTML = '<option value="">-- Primero elija Sección --</option>';
+      $('#agilSeccion').disabled = !grado || !secciones.length;
+      $('#agilEquipo').disabled = true;
+      $('#agilSemana').disabled = true;
+      actualizarSemanasCalificacionAgil(grado);
+      ocultarPanelCalificacionAgil();
+    };
 
     $('#agilSeccion').onchange = () => {
-      const s = $('#agilSeccion').value;
-      const eqs = state.equipos.filter(e => String(e.seccion).trim() === String(s).trim());
+      const grado = $('#agilGrado').value;
+      const seccion = $('#agilSeccion').value;
+      const eqs = state.equipos.filter(e =>
+        normalizarGrado(e.grado) === normalizarGrado(grado) &&
+        String(e.seccion).trim() === String(seccion).trim()
+      );
       $('#agilEquipo').innerHTML = '<option value="">-- Seleccionar Equipo --</option>' +
-        eqs.map(e => `<option value="${e.equipo_id}">${e.nombre_equipo} (${e.grado})</option>`).join('');
-      $('#agilPanelCalificacion').style.display = 'none';
-      $('#agilBannerSemana').style.display = 'none';
+        eqs.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)} (${escaparHtml(e.grado)})</option>`).join('');
+      $('#agilEquipo').disabled = !seccion || !eqs.length;
+      $('#agilSemana').disabled = true;
+      ocultarPanelCalificacionAgil();
     };
 
     $('#agilEquipo').onchange = () => {
-      $('#agilPanelCalificacion').style.display = 'none';
-      $('#agilBannerSemana').style.display = 'none';
+      $('#agilSemana').disabled = !$('#agilEquipo').value;
+      ocultarPanelCalificacionAgil();
     };
+    $('#agilSemana').onchange = ocultarPanelCalificacionAgil;
 
     $('#btnCargarCalificacionAgil').onclick = cargarCalificacionAgil;
     $('#btnGuardarTodoAgil').onclick = guardarCalificacionAgilCompleta;
@@ -904,11 +914,39 @@ async function inicializarCalificacionAgil() {
   }
 }
 
-async function cargarCalificacionAgil() {
-  const eqId = $('#agilEquipo').value;
-  const semana = normalizarSemana($('#agilSemana').value);
+function actualizarSemanasCalificacionAgil(grado) {
+  const select = $('#agilSemana');
+  const semanaActual = select.value;
+  const semanas = new Set();
+  state.plan.forEach(fila => {
+    if (grado && normalizarGrado(fila.Grado) !== normalizarGrado(grado)) return;
+    if (fila.Semana === null || fila.Semana === undefined || String(fila.Semana).trim() === '') return;
+    const semana = Number(fila.Semana);
+    if (Number.isInteger(semana)) semanas.add(semana);
+  });
+  const semanasOrdenadas = [...semanas].sort((a, b) => a - b);
+  select.innerHTML = semanasOrdenadas.length
+    ? '<option value="">-- Seleccionar Semana --</option>' +
+      semanasOrdenadas.map(semana => `<option value="${semana}">Semana ${semana}</option>`).join('')
+    : '<option value="">No hay semanas cargadas</option>';
+  select.value = semanasOrdenadas.some(semana => String(semana) === semanaActual) ? semanaActual : '';
+}
 
+function ocultarPanelCalificacionAgil() {
+  $('#agilPanelCalificacion').style.display = 'none';
+  $('#agilBannerSemana').style.display = 'none';
+}
+
+async function cargarCalificacionAgil() {
+  const grado = $('#agilGrado').value;
+  const seccion = $('#agilSeccion').value;
+  const eqId = $('#agilEquipo').value;
+  const semanaSeleccionada = $('#agilSemana').value;
+  if (!grado) { toast('⚠️ Por favor selecciona un grado'); return; }
+  if (!seccion) { toast('⚠️ Por favor selecciona una sección'); return; }
   if (!eqId) { toast('⚠️ Por favor selecciona un equipo'); return; }
+  if (semanaSeleccionada === '') { toast('⚠️ Por favor selecciona una semana'); return; }
+  const semana = normalizarSemana(semanaSeleccionada);
 
   try {
     $('#btnCargarCalificacionAgil').disabled = true;
@@ -962,6 +1000,12 @@ async function cargarCalificacionAgil() {
 
 function renderPanelCalificacionAgil() {
   const { equipo, semana, planSemana, miembros, evidencias, datosApi } = datosCalificacionAgilActual;
+  const esSemanaInicial = semana === 0;
+  $('#agilBloqueGrupal').style.display = esSemanaInicial ? 'none' : 'block';
+  $('#agilAvisoSemanaInicial').style.display = esSemanaInicial ? 'block' : 'none';
+  $('#agilEstadoCalificacion').textContent = esSemanaInicial
+    ? '🧍 Evaluación individual'
+    : datosApi?.calificacion_grupal_existente?.calificado ? '✅ Ya Calificado (Modo Edición)' : '⏳ Pendiente de Calificar';
 
   // Banner
   $('#agilProyectoNombre').textContent = equipo.proyecto || 'Proyecto Emprendedor';
@@ -971,7 +1015,9 @@ function renderPanelCalificacionAgil() {
     : '<em>Sin enlace</em>';
 
   const yaCalificado = datosApi?.calificacion_grupal_existente?.calificado;
-  $('#agilEstadoCalificacion').textContent = yaCalificado ? '✅ Ya Calificado (Modo Edición)' : '⏳ Pendiente de Calificar';
+  if (!esSemanaInicial) {
+    $('#agilEstadoCalificacion').textContent = yaCalificado ? '✅ Ya Calificado (Modo Edición)' : '⏳ Pendiente de Calificar';
+  }
   $('#agilEstadoCalificacion').className = 'badge-estado ' + (yaCalificado ? 'calificado' : 'pendiente');
   $('#agilBannerSemana').style.display = 'flex';
 
@@ -984,7 +1030,7 @@ function renderPanelCalificacionAgil() {
   const rubricaG = [...(state.rubricaGrupal || [])].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0));
   const prevG = datosApi?.calificacion_grupal_existente?.criterios || [];
 
-  $('#tablaRubricaGrupalAgil tbody').innerHTML = rubricaG.map(r => {
+  $('#tablaRubricaGrupalAgil tbody').innerHTML = esSemanaInicial ? '' : rubricaG.map(r => {
     const valPrev = prevG.find(p => p.criterio_id === r.criterio_id)?.puntaje ?? (yaCalificado ? 0 : r.peso_max || 5);
     return `
       <tr data-criterio="${r.criterio_id}">
@@ -1000,8 +1046,14 @@ function renderPanelCalificacionAgil() {
       </tr>`;
   }).join('');
 
-  $('#agilObsPcG处').value = datosApi?.calificacion_grupal_existente?.observacion_pc || '';
-  $('#agilComentarioGrupal').value = datosApi?.calificacion_grupal_existente?.comentario || '';
+  $('#agilObsPcG处').value = esSemanaInicial ? '' : datosApi?.calificacion_grupal_existente?.observacion_pc || '';
+  $('#agilComentarioGrupal').value = esSemanaInicial ? '' : datosApi?.calificacion_grupal_existente?.comentario || '';
+  $('#btnGuardarTodoAgil').textContent = esSemanaInicial
+    ? '💾 Guardar calificaciones individuales'
+    : '💾 Guardar / Sobrescribir Calificación Semanal';
+  $('#btnAutoLlenar5').textContent = esSemanaInicial
+    ? '⭐ Todo 5 (evaluación individual)'
+    : '⭐ Todo 5 (Excelente desempeño)';
 
   // Rúbrica Individual por Alumno
   const rubricaI = [...(state.rubricaIndividual || [])].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0));
@@ -1103,9 +1155,10 @@ function autoLlenarMaximos() {
 async function guardarCalificacionAgilCompleta() {
   if (!datosCalificacionAgilActual) return;
   const { equipo_id, semana } = datosCalificacionAgilActual;
+  const esSemanaInicial = semana === 0;
 
   // 1. Recolectar Grupal
-  const filasG = $$('#tablaRubricaGrupalAgil tbody tr');
+  const filasG = esSemanaInicial ? [] : $$('#tablaRubricaGrupalAgil tbody tr');
   const criteriosGrupales = filasG.map(tr => ({
     criterio_id: tr.dataset.criterio,
     puntaje: Number(tr.querySelector('.input-puntaje-g').value) || 0
@@ -1146,7 +1199,7 @@ async function guardarCalificacionAgilCompleta() {
         equipo_id,
         semana,
         entrega_id: entregaId,
-        calificacion_grupal: {
+        calificacion_grupal: esSemanaInicial ? null : {
           criterios: criteriosGrupales,
           comentario: comGrupal,
           observacion_pc: obsPcGrupal
@@ -1155,14 +1208,15 @@ async function guardarCalificacionAgilCompleta() {
       });
     } catch (e) {
       // Fallback a los endpoints tradicionales si es necesario
-      await apiPost('calificar', {
-        entrega_id: entregaId,
-        equipo_id: equipo_id,
-        criterios: criteriosGrupales,
-        comentario: comGrupal,
-        observacion_pc: obsPcGrupal
-      });
-
+      if (!esSemanaInicial) {
+        await apiPost('calificar', {
+          entrega_id: entregaId,
+          equipo_id: equipo_id,
+          criterios: criteriosGrupales,
+          comentario: comGrupal,
+          observacion_pc: obsPcGrupal
+        });
+      }
       for (const ind of evaluacionesIndividuales) {
         await apiPost('calificar-individual', {
           entrega_id: entregaId,
@@ -2373,10 +2427,6 @@ function renderPlan() {
    10. CENTRO DE RECURSOS Y HERRAMIENTAS
    ========================================================= */
 async function inicializarRecursos() {
-  if (!state.recursos || !state.recursos.length) {
-    state.recursos = [...RECURSOS_INICIALES];
-  }
-
   const inputBusqueda = $('#busquedaRecursosInput');
   if (inputBusqueda && !inputBusqueda._iniciado) {
     inputBusqueda._iniciado = true;
@@ -2389,13 +2439,9 @@ async function inicializarRecursos() {
     btnRecargar.onclick = recargarRecursos;
   }
 
-  // Render inicial inmediato
-  renderRecursos();
-
-  // Sincronizar en segundo plano con Google Sheets
   try {
     const data = await apiGet('recursos');
-    if (data && data.recursos && data.recursos.length > 0) {
+    if (data && Array.isArray(data.recursos)) {
       state.recursos = data.recursos.map(r => ({
         titulo: String(r.titulo || '').trim(),
         url: String(r.url || '').trim(),
@@ -2406,7 +2452,8 @@ async function inicializarRecursos() {
       renderRecursos();
     }
   } catch (e) {
-    console.log('Usando recursos predeterminados (offline/local):', e.message);
+    state.recursos = [];
+    renderRecursos(e.message);
   }
 }
 
@@ -2424,9 +2471,11 @@ async function recargarRecursos() {
       })).filter(r => r.titulo && r.activo);
       toast('✅ Recursos actualizados correctamente');
     } else {
+      state.recursos = [];
       toast('ℹ️ No se encontraron recursos en la hoja');
     }
   } catch (e) {
+    state.recursos = [];
     toast('⚠️ Error al consultar hoja Recursos: ' + e.message);
   }
   renderRecursos();
@@ -2437,8 +2486,8 @@ function esRecursoDestacado(r) {
   return c === 'rubrica' || c === 'rúbrica' || c === 'lineamientos' || c === 'lineamiento';
 }
 
-function renderRecursos() {
-  const todos = (state.recursos && state.recursos.length) ? state.recursos : RECURSOS_INICIALES;
+function renderRecursos(error = '') {
+  const todos = state.recursos || [];
   const busqueda = ($('#busquedaRecursosInput')?.value || '').toLowerCase().trim();
   const filtroCat = state.filtroCategoriaRecurso || '';
 
@@ -2455,7 +2504,7 @@ function renderRecursos() {
     if (!destacados.length) {
       contenedorDestacados.innerHTML = `
         <div class="vacio-box" style="grid-column: 1 / -1; padding: 20px;">
-          <p>No se encontraron documentos o lineamientos para la búsqueda.</p>
+          <p>${error ? `No se pudieron cargar los recursos: ${escaparHtml(error)}` : busqueda ? 'No se encontraron documentos o lineamientos para la búsqueda.' : 'No hay documentos oficiales cargados.'}</p>
         </div>`;
     } else {
       contenedorDestacados.innerHTML = destacados.map(d => {
@@ -2557,7 +2606,7 @@ function renderRecursos() {
     if (!herramientasFiltradas.length) {
       contenedorSimples.innerHTML = `
         <div class="vacio-box" style="grid-column: 1 / -1; padding: 24px;">
-          <p>No se encontraron herramientas que coincidan con la búsqueda o filtro seleccionado.</p>
+          <p>${error ? `No se pudieron cargar los recursos: ${escaparHtml(error)}` : herramientas.length || busqueda || filtroCat ? 'No se encontraron herramientas que coincidan con la búsqueda o filtro seleccionado.' : 'No hay herramientas cargadas.'}</p>
         </div>`;
     } else {
       contenedorSimples.innerHTML = herramientasFiltradas.map(h => {
@@ -2709,8 +2758,8 @@ async function init() {
     }
     if (!state.sesion) return;
 
-    mostrarApp();
     await arrancarApp();
+    mostrarApp();
   } else {
     mostrarLogin();
   }
