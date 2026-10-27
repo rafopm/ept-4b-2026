@@ -19,6 +19,8 @@ let state = {
   miInfo: null,
   equipos: [],
   alumnos: [],
+  solicitudesCambioEquipo: [],
+  solicitudCambioEquipo: null,
   entregas: [],
   evidencias: [],
   puntosExtra: [],
@@ -315,7 +317,7 @@ function navegar(view) {
   if (view === 'sorteo') inicializarSorteo();
   if (view === 'ranking') cargarRanking();
   if (view === 'ranking-individual') cargarRankingIndividual();
-  if (view === 'mi-equipo') renderMiEquipo();
+  if (view === 'mi-equipo') cargarMiEquipo();
   if (view === 'mis-notas') cargarMisNotasAlumno();
   if (view === 'plan') renderPlan();
   if (view === 'recursos') inicializarRecursos();
@@ -1087,7 +1089,7 @@ function renderPanelCalificacionAgil() {
     : equipo?.proyecto || 'Proyecto Emprendedor';
   $('#agilTecnologia').textContent = planSemana[0]?.Tecnologia || 'Herramientas Digitales';
   $('#agilTrelloLink').innerHTML = equipo?.trello_url
-    ? `<a href="${equipo.trello_url}" target="_blank" rel="noopener" class="btn-trello" style="padding:2px 8px;font-size:11px">🔗 Abrir Trello ↗</a>`
+    ? `<a href="${escaparHtml(equipo.trello_url)}" target="_blank" rel="noopener" class="btn-trello" style="padding:2px 8px;font-size:11px">🔗 Abrir Trello ↗</a>`
     : modo === 'seccion' ? '<em>No aplica a toda la sección</em>' : '<em>Sin enlace</em>';
 
   const yaCalificado = datosApi?.calificacion_grupal_existente?.calificado;
@@ -1393,6 +1395,16 @@ async function guardarCalificacionAgilCompleta() {
 /* =========================================================
    4. GESTIÓN DE GRUPOS Y ROLES (DOCENTE)
    ========================================================= */
+function normalizarBusquedaGestion(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+let equipoEnEdicionActual = '';
+
 async function cargarGestion() {
   try {
     const [eqData, alData] = await Promise.all([
@@ -1402,12 +1414,24 @@ async function cargarGestion() {
     state.equipos = eqData.equipos || [];
     state.alumnos = alData.alumnos || [];
 
-    // Poblar filtro sección
-    const secs = [...new Set(state.equipos.map(e => e.seccion).filter(Boolean))].sort();
-    $('#filtroGestionSeccion').innerHTML = '<option value="">Todas las secciones</option>' +
-      secs.map(s => `<option value="${s}">${s}</option>`).join('');
+    const grados = [...new Set([
+      ...state.equipos.map(e => String(e.grado || '').trim()),
+      ...state.alumnos.map(a => String(a.grado || '').trim())
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    $('#filtroGestionGrado').innerHTML = '<option value="">Todos los grados</option>' +
+      grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+    $('#filtroGestionSeccion').innerHTML = '<option value="">Primero elija grado</option>';
+    $('#filtroGestionSeccion').disabled = true;
 
-    $('#filtroGestionSeccion').onchange = renderEquiposVisuales;
+    $('#filtroGestionGrado').onchange = () => {
+      poblarSeccionesGestion($('#filtroGestionGrado').value, '#filtroGestionSeccion', true);
+      renderEquiposVisuales();
+      renderTablaAlumnosGestion();
+    };
+    $('#filtroGestionSeccion').onchange = () => {
+      renderEquiposVisuales();
+      renderTablaAlumnosGestion();
+    };
     $('#busquedaAlumnoInput').oninput = renderTablaAlumnosGestion;
 
     renderEquiposVisuales();
@@ -1415,19 +1439,123 @@ async function cargarGestion() {
 
   } catch (e) {
     toast('❌ Error en gestión: ' + e.message);
+    return;
   }
+
+  try {
+    const data = await apiGet('solicitudes-equipo');
+    state.solicitudesCambioEquipo = data.solicitudes || [];
+    renderSolicitudesCambioEquipo();
+  } catch (e) {
+    $('#solicitudesEquipoContador').textContent = 'No disponible';
+    $('#solicitudesEquipoLista').innerHTML =
+      `<p class="hint">No se pudieron cargar las solicitudes: ${escaparHtml(e.message)}. Verifica que code.gs esté actualizado y desplegado.</p>`;
+  }
+}
+
+function renderSolicitudesCambioEquipo() {
+  const lista = $('#solicitudesEquipoLista');
+  const solicitudes = state.solicitudesCambioEquipo || [];
+  $('#solicitudesEquipoContador').textContent =
+    `${solicitudes.length} ${solicitudes.length === 1 ? 'pendiente' : 'pendientes'}`;
+
+  if (!solicitudes.length) {
+    lista.innerHTML = '<p class="hint">No hay solicitudes pendientes de aprobación.</p>';
+    return;
+  }
+
+  lista.innerHTML = solicitudes.map(solicitud => {
+    const equipo = state.equipos.find(e => String(e.equipo_id) === String(solicitud.equipo_id));
+    const nombreEquipo = equipo?.nombre_equipo || solicitud.nombre_actual || solicitud.equipo_id;
+    const solicitado = solicitud.fecha_solicitud
+      ? new Date(solicitud.fecha_solicitud).toLocaleString('es-PE')
+      : '';
+    return `
+      <article class="solicitud-equipo-card">
+        <div class="solicitud-equipo-cabecera">
+          <div>
+            <h4>${escaparHtml(nombreEquipo)}</h4>
+            <p class="hint">${escaparHtml(equipo?.grado || '')} · Sección ${escaparHtml(equipo?.seccion || '')} · ID ${escaparHtml(solicitud.equipo_id)}</p>
+          </div>
+          <span class="solicitud-estado pendiente">Pendiente</span>
+        </div>
+        <p><b>Solicitado por:</b> ${escaparHtml(solicitud.autor_nombre || 'Alumno')} · ${escaparHtml(solicitud.autor_correo || '')}</p>
+        ${solicitado ? `<p class="hint">Fecha: ${escaparHtml(solicitado)}</p>` : ''}
+        <div class="solicitud-cambios-grid">
+          <div><small>Nombre actual</small><p>${escaparHtml(solicitud.nombre_actual || '—')}</p></div>
+          <div><small>Nombre propuesto</small><p><b>${escaparHtml(solicitud.nombre_solicitado || '—')}</b></p></div>
+          <div><small>Trello actual</small><p>${escaparHtml(solicitud.trello_actual || '—')}</p></div>
+          <div><small>Trello propuesto</small><p>${escaparHtml(solicitud.trello_solicitado || '—')}</p></div>
+        </div>
+        <div class="toolbar solicitud-acciones">
+          <button type="button" class="btn btn-ghost btn-rechazar-solicitud" data-solicitud-id="${escaparHtml(solicitud.solicitud_id)}">Rechazar</button>
+          <button type="button" class="btn btn-primary btn-aprobar-solicitud" data-solicitud-id="${escaparHtml(solicitud.solicitud_id)}">✅ Aprobar cambio</button>
+        </div>
+      </article>`;
+  }).join('');
+
+  $$('.btn-aprobar-solicitud', lista).forEach(btn => {
+    btn.onclick = () => resolverSolicitudCambioEquipo(btn.dataset.solicitudId, 'aprobar');
+  });
+  $$('.btn-rechazar-solicitud', lista).forEach(btn => {
+    btn.onclick = () => resolverSolicitudCambioEquipo(btn.dataset.solicitudId, 'rechazar');
+  });
+}
+
+async function resolverSolicitudCambioEquipo(solicitudId, decision) {
+  const mensaje = decision === 'aprobar'
+    ? '¿Aprobar el cambio y actualizar el nombre y Trello de este equipo?'
+    : '¿Rechazar esta solicitud? El nombre y Trello actuales se conservarán.';
+  if (!window.confirm(mensaje)) return;
+
+  try {
+    await apiPost('resolver-solicitud-cambio-equipo', {
+      solicitud_id: solicitudId,
+      decision
+    });
+    toast(decision === 'aprobar' ? '✅ Cambio aprobado y aplicado' : 'Solicitud rechazada');
+    await cargarGestion();
+  } catch (e) {
+    toast('❌ No se pudo resolver la solicitud: ' + e.message);
+  }
+}
+
+function seccionesDisponiblesPorGrado(grado) {
+  const equiposGrado = state.equipos.filter(e =>
+    !grado || normalizarGrado(e.grado) === normalizarGrado(grado)
+  );
+  const idsEquipos = new Set(equiposGrado.map(e => String(e.equipo_id)));
+  return [...new Set([
+    ...equiposGrado.map(e => String(e.seccion || '').trim()),
+    ...state.alumnos
+      .filter(a => (!grado || normalizarGrado(a.grado) === normalizarGrado(grado)) ||
+        (!a.grado && idsEquipos.has(String(a.equipo_id))))
+      .map(a => String(a.seccion || '').trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+}
+
+function poblarSeccionesGestion(grado, selector, incluirTodas = false, seccionSeleccionada = '') {
+  const select = $(selector);
+  const secciones = seccionesDisponiblesPorGrado(grado);
+  const placeholder = incluirTodas ? 'Todas las secciones' : '-- Selecciona sección --';
+  select.innerHTML = `<option value="">${placeholder}</option>` +
+    secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+  select.disabled = !grado || !secciones.length;
+  if (secciones.includes(seccionSeleccionada)) select.value = seccionSeleccionada;
 }
 
 function renderEquiposVisuales() {
   const cont = $('#contenedorEquiposVisual');
+  const filtroGrado = $('#filtroGestionGrado').value;
   const filtroSec = $('#filtroGestionSeccion').value;
 
-  const equiposFiltrados = filtroSec
-    ? state.equipos.filter(e => String(e.seccion).trim() === String(filtroSec).trim())
-    : state.equipos;
+  const equiposFiltrados = state.equipos.filter(e =>
+    (!filtroGrado || normalizarGrado(e.grado) === normalizarGrado(filtroGrado)) &&
+    (!filtroSec || String(e.seccion).trim() === String(filtroSec).trim())
+  );
 
   if (!equiposFiltrados.length) {
-    cont.innerHTML = '<p class="hint" style="grid-column:1/-1">No hay equipos registrados para esta sección.</p>';
+    cont.innerHTML = '<p class="hint" style="grid-column:1/-1">No hay equipos registrados para los filtros seleccionados.</p>';
     return;
   }
 
@@ -1442,7 +1570,7 @@ function renderEquiposVisuales() {
         <div class="slot-rol">
           <div class="slot-rol-info">
             <span class="badge-rol rol-${r}" style="font-size:10px;padding:2px 6px">${r}</span>
-            ${al ? `<b>${al.nombre || al.correo}</b>` : `<span class="slot-vacio">Sin asignar</span>`}
+            ${al ? `<b>${escaparHtml(al.nombre || al.correo)}</b>` : `<span class="slot-vacio">Sin asignar</span>`}
           </div>
           ${al ? `<small style="color:#666">${al.dni || ''}</small>` : ''}
         </div>`;
@@ -1452,13 +1580,13 @@ function renderEquiposVisuales() {
       <div class="equipo-visual-card">
         <div class="eq-card-header">
           <div>
-            <h3>${eq.nombre_equipo}</h3>
-            <small style="color:#666">${eq.grado} · ${eq.proyecto || 'Proyecto'}</small>
+            <h3>${escaparHtml(eq.nombre_equipo)}</h3>
+            <small style="color:#666">${escaparHtml(eq.grado)} · ${escaparHtml(eq.proyecto || 'Proyecto')}</small>
           </div>
-          <span class="sec-badge">${eq.seccion || '1A'}</span>
+          <span class="sec-badge">${escaparHtml(eq.seccion || '1A')}</span>
         </div>
 
-        ${eq.trello_url ? `<p style="font-size:12px;margin-bottom:8px">📋 <a href="${eq.trello_url}" target="_blank" rel="noopener">Trello oficial ↗</a></p>` : ''}
+        ${eq.trello_url ? `<p style="font-size:12px;margin-bottom:8px">📋 <a href="${escaparHtml(eq.trello_url)}" target="_blank" rel="noopener">Trello oficial ↗</a></p>` : ''}
 
         <div class="roles-slots">
           ${slotsHTML}
@@ -1474,14 +1602,21 @@ function renderEquiposVisuales() {
 
 function renderTablaAlumnosGestion() {
   const tbody = $('#tablaAlumnosGestion tbody');
-  const q = ($('#busquedaAlumnoInput').value || '').toLowerCase().trim();
+  const q = normalizarBusquedaGestion($('#busquedaAlumnoInput').value);
+  const filtroGrado = $('#filtroGestionGrado').value;
+  const filtroSec = $('#filtroGestionSeccion').value;
 
   const filtrados = state.alumnos.filter(a => {
+    const equipo = state.equipos.find(e => String(e.equipo_id) === String(a.equipo_id));
+    const gradoAlumno = normalizarGrado(a.grado || equipo?.grado);
+    const seccionAlumno = String(a.seccion || equipo?.seccion || '').trim();
+    if (filtroGrado && gradoAlumno !== normalizarGrado(filtroGrado)) return false;
+    if (filtroSec && seccionAlumno !== filtroSec) return false;
     if (!q) return true;
-    const n = (a.nombre || [a.nombres, a.apellidos].filter(Boolean).join(' ') || '').toLowerCase();
-    const c = (a.correo || '').toLowerCase();
-    const d = (a.dni || '').toLowerCase();
-    return n.includes(q) || c.includes(q) || d.includes(q);
+    const texto = normalizarBusquedaGestion([
+      a.nombre, a.nombres, a.apellidos, a.correo, a.dni
+    ].filter(Boolean).join(' '));
+    return texto.includes(q);
   });
 
   if (!filtrados.length) {
@@ -1490,15 +1625,18 @@ function renderTablaAlumnosGestion() {
   }
 
   tbody.innerHTML = filtrados.map(a => {
-    const eq = state.equipos.find(e => String(e.equipo_id) === String(a.equipo_id))?.nombre_equipo || a.equipo_id || '—';
+    const equipoAsignado = state.equipos.find(e => String(e.equipo_id) === String(a.equipo_id));
+    const eq = equipoAsignado?.nombre_equipo || a.equipo_id || '—';
     return `
-      <tr>
+      <tr class="${a.equipo_id ? 'alumno-con-equipo' : 'alumno-sin-equipo'}">
         <td><b>${a.nombre || [a.nombres, a.apellidos].filter(Boolean).join(' ') || '—'}</b></td>
         <td>${a.dni || '—'}</td>
         <td>${a.correo}</td>
         <td>${a.grado || '—'}</td>
         <td style="text-align:center">${a.seccion || '—'}</td>
-        <td>${eq}</td>
+        <td>${a.equipo_id
+          ? `<span class="estado-asignacion asignado">● ${escaparHtml(eq)}</span>`
+          : '<span class="estado-asignacion disponible">● Sin equipo</span>'}</td>
         <td><span class="badge-rol rol-${a.rol || 'CEO'}" style="font-size:10px;padding:2px 6px">${a.rol || 'CEO'}</span></td>
         <td>
           <button class="btn btn-ghost btn-sm" onclick="abrirModalAlumnoEdicion('${a.correo}')">✏️</button>
@@ -1513,31 +1651,26 @@ function editarEquipoModal(equipoId) {
   if (!eq) return;
 
   const miembros = state.alumnos.filter(a => String(a.equipo_id) === String(equipoId));
-  const posiblesAlumnos = state.alumnos.filter(a =>
-    !a.equipo_id || a.equipo_id === equipoId || a.seccion === eq.seccion
-  );
-
   const roles = ['CEO', 'CTO', 'CMO', 'CFO'];
 
   const slotsSelects = roles.map(r => {
     const actual = miembros.find(m => String(m.rol).toUpperCase() === r);
-    const opciones = '<option value="">-- Sin asignar --</option>' + posiblesAlumnos.map(al => {
-      const sel = actual && al.correo === actual.correo ? 'selected' : '';
-      return `<option value="${al.correo}" ${sel}>${al.nombre || al.correo} (${al.seccion || ''})</option>`;
-    }).join('');
-
     return `
       <div class="form-group">
         <label><span class="badge-rol rol-${r}" style="font-size:10px;padding:2px 6px">${r}</span> Asignar Estudiante:</label>
-        <select id="asigRol_${r}" class="select select-full">${opciones}</select>
+        <input type="search" id="asigBuscar_${r}" class="input-full" placeholder="🔍 Filtrar por nombre o apellido..." autocomplete="off">
+        <select id="asigRol_${r}" class="select select-full" style="margin-top:6px">
+          <option value="${escaparHtml(actual?.correo || '')}">${escaparHtml(actual?.nombre || actual?.correo || '-- Sin asignar --')}</option>
+        </select>
       </div>`;
   }).join('');
 
+  equipoEnEdicionActual = String(eq.equipo_id);
   $('#modalAsignarTitulo').textContent = `Configurar Equipo: ${eq.nombre_equipo}`;
   $('#modalAsignarBody').innerHTML = `
     <div class="form-group">
       <label>Nombre del Equipo:</label>
-      <input type="text" id="asigNombreEq" value="${eq.nombre_equipo || ''}" class="input-full">
+      <input type="text" id="asigNombreEq" value="${escaparHtml(eq.nombre_equipo || '')}" class="input-full">
     </div>
     <div class="grid-2" style="margin-bottom:12px">
       <div class="form-group">
@@ -1551,7 +1684,7 @@ function editarEquipoModal(equipoId) {
       </div>
       <div class="form-group">
         <label>Sección:</label>
-        <input type="text" id="asigSeccionEq" value="${eq.seccion || '1A'}" class="input-full">
+        <select id="asigSeccionEq" class="select select-full"><option value="">-- Selecciona sección --</option></select>
       </div>
     </div>
     <div class="form-group">
@@ -1560,18 +1693,32 @@ function editarEquipoModal(equipoId) {
     </div>
     <div class="form-group">
       <label>URL Oficial del Tablero Trello:</label>
-      <input type="url" id="asigTrelloEq" value="${eq.trello_url || ''}" placeholder="https://trello.com/b/..." class="input-full">
+      <input type="url" id="asigTrelloEq" value="${escaparHtml(eq.trello_url || '')}" placeholder="https://trello.com/b/..." class="input-full">
     </div>
-    <h4 style="margin:16px 0 10px;color:var(--azul-oscuro)">Asignación de Roles Obligatorios:</h4>
+    <h4 style="margin:16px 0 4px;color:var(--azul-oscuro)">Asignación de Roles Obligatorios:</h4>
+    <p class="hint">Filtra por nombre o apellido. Los alumnos asignados a otro equipo aparecen en naranja y no se pueden seleccionar.</p>
     ${slotsSelects}
   `;
+  poblarSeccionesGestion($('#asigGradoEq').value, '#asigSeccionEq', false, eq.seccion || '');
+  roles.forEach(rol => {
+    $(`#asigBuscar_${rol}`).oninput = () => actualizarOpcionesAlumnoNuevoEquipo(rol);
+    $(`#asigRol_${rol}`).onchange = () => {
+      roles.filter(otroRol => otroRol !== rol).forEach(actualizarOpcionesAlumnoNuevoEquipo);
+    };
+  });
+  $('#asigGradoEq').onchange = () => {
+    poblarSeccionesGestion($('#asigGradoEq').value, '#asigSeccionEq');
+    roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
+  };
+  $('#asigSeccionEq').onchange = () => roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
+  roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
 
   $('#btnGuardarAsignarEq').onclick = async () => {
     const payload = {
       equipo_id: eq.equipo_id,
       nombre_equipo: $('#asigNombreEq').value.trim(),
       grado: $('#asigGradoEq').value,
-      seccion: $('#asigSeccionEq').value.trim(),
+      seccion: $('#asigSeccionEq').value,
       proyecto: $('#asigProyectoEq').value.trim(),
       trello_url: $('#asigTrelloEq').value.trim(),
       miembros: roles.map(r => ({
@@ -1595,6 +1742,7 @@ function editarEquipoModal(equipoId) {
 
 function abrirModalCrearEquipo() {
   const roles = ['CEO', 'CTO', 'CMO', 'CFO'];
+  equipoEnEdicionActual = '';
   const slotsSelects = roles.map(r => {
     return `
       <div class="form-group">
@@ -1620,6 +1768,7 @@ function abrirModalCrearEquipo() {
       <div class="form-group">
         <label>Grado:</label>
         <select id="asigGradoEq" class="select select-full">
+          <option value="">-- Seleccionar grado --</option>
           <option>1° Secundaria</option>
           <option>2° Secundaria</option>
           <option>3° Secundaria</option>
@@ -1628,7 +1777,7 @@ function abrirModalCrearEquipo() {
       </div>
       <div class="form-group">
         <label>Sección:</label>
-        <input type="text" id="asigSeccionEq" value="1A" class="input-full">
+        <select id="asigSeccionEq" class="select select-full" disabled><option value="">-- Primero elige grado --</option></select>
       </div>
     </div>
     <div class="form-group">
@@ -1639,7 +1788,8 @@ function abrirModalCrearEquipo() {
       <label>URL Oficial del Tablero Trello:</label>
       <input type="url" id="asigTrelloEq" placeholder="https://trello.com/b/..." class="input-full">
     </div>
-    <h4 style="margin:16px 0 10px;color:var(--azul-oscuro)">Asignación Inicial de Roles:</h4>
+    <h4 style="margin:16px 0 4px;color:var(--azul-oscuro)">Asignación Inicial de Roles:</h4>
+    <p class="hint">Primero elige el grado y la sección. Los alumnos con equipo aparecen en naranja y no se pueden volver a asignar.</p>
     ${slotsSelects}
   `;
 
@@ -1653,9 +1803,10 @@ function abrirModalCrearEquipo() {
       '4° Secundaria': 'Tech Startup Escalable'
     };
     $('#asigProyectoEq').value = mapaProyectos[g] || 'Proyecto Digital';
+    poblarSeccionesGestion(g, '#asigSeccionEq');
     roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
   };
-  $('#asigSeccionEq').oninput = () => roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
+  $('#asigSeccionEq').onchange = () => roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
   roles.forEach(rol => {
     $(`#asigBuscar_${rol}`).oninput = () => actualizarOpcionesAlumnoNuevoEquipo(rol);
     $(`#asigRol_${rol}`).onchange = () => {
@@ -1702,7 +1853,7 @@ function abrirModalAlumnoEdicion(correo = null) {
 
   const eqOpciones = '<option value="">-- Sin equipo --</option>' + state.equipos.map(e => {
     const sel = al && al.equipo_id === e.equipo_id ? 'selected' : '';
-    return `<option value="${e.equipo_id}" ${sel}>${e.nombre_equipo} (${e.seccion || ''})</option>`;
+    return `<option value="${escaparHtml(e.equipo_id)}" ${sel}>${escaparHtml(e.nombre_equipo)} (${escaparHtml(e.seccion || '')})</option>`;
   }).join('');
 
   abrirModalGenerico({
@@ -1797,7 +1948,7 @@ function abrirModalOtorgarXP() {
   ).join('');
 
   $('#xpSelectEquipo').innerHTML = state.equipos.map(e =>
-    `<option value="${e.equipo_id}">${e.nombre_equipo} (${e.seccion || ''})</option>`
+    `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)} (${escaparHtml(e.seccion || '')})</option>`
   ).join('');
 
   $('#xpTipoDestinatario').onchange = () => {
@@ -1881,7 +2032,7 @@ function inicializarReportes() {
     const s = $('#reporteFiltroSeccion').value;
     const eqs = s ? state.equipos.filter(e => String(e.seccion).trim() === String(s).trim()) : state.equipos;
     $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los Equipos --</option>' +
-      eqs.map(e => `<option value="${e.equipo_id}">${e.nombre_equipo}</option>`).join('');
+      eqs.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
     renderReporteImprimible();
   };
 
@@ -1927,10 +2078,10 @@ function renderReporteImprimible() {
         return `
           <tr>
             <td style="text-align:center">${idx + 1}</td>
-            <td><b>${m.nombre || [m.nombres, m.apellidos].filter(Boolean).join(' ') || m.correo}</b></td>
-            ${!ocultarSensibles ? `<td>${dniMostrar}</td>` : ''}
+            <td><b>${escaparHtml(m.nombre || [m.nombres, m.apellidos].filter(Boolean).join(' ') || m.correo)}</b></td>
+            ${!ocultarSensibles ? `<td>${escaparHtml(dniMostrar)}</td>` : ''}
             <td><span class="badge-rol rol-${m.rol || 'CEO'}" style="font-size:10px;padding:2px 6px">${m.rol || 'CEO'}</span></td>
-            <td>${correoMostrar}</td>
+            <td>${escaparHtml(correoMostrar)}</td>
           </tr>`;
       }).join('');
 
@@ -1938,10 +2089,10 @@ function renderReporteImprimible() {
         <div style="margin-bottom:20px;border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#fff">
           <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px">
             <div>
-              <strong style="color:var(--azul-oscuro);font-size:14px">Equipo: ${eq.nombre_equipo}</strong>
-              <span style="color:#555;margin-left:10px">Grado: ${eq.grado} · Proyecto: ${eq.proyecto || '—'}</span>
+              <strong style="color:var(--azul-oscuro);font-size:14px">Equipo: ${escaparHtml(eq.nombre_equipo)}</strong>
+              <span style="color:#555;margin-left:10px">Grado: ${escaparHtml(eq.grado)} · Proyecto: ${escaparHtml(eq.proyecto || '—')}</span>
             </div>
-            <div><b>Trello:</b> ${eq.trello_url || '—'}</div>
+            <div><b>Trello:</b> ${escaparHtml(eq.trello_url || '—')}</div>
           </div>
           <table class="tabla" style="font-size:11.5px">
             <thead>
@@ -2214,7 +2365,7 @@ function renderResultadosSorteo() {
           ${res.trello ? `<br><a href="${res.trello}" target="_blank" rel="noopener" style="font-size:11px;color:var(--azul)">📋 Trello ↗</a>` : ''}
         </td>
         <td style="text-align:center"><span class="badge badge-sec">${res.seccion}</span></td>
-        <td><small>${res.proyecto}</small></td>
+        <td><small>${escaparHtml(res.proyecto)}</small></td>
         <td style="text-align:center;font-weight:700;color:var(--azul-oscuro)">${res.horaEstimada}</td>
         <td style="text-align:center" class="no-print">
           ${estadoBadge}
@@ -2376,18 +2527,46 @@ function renderMiEquipo() {
         <div class="slot-rol-info">
           <span class="badge-rol rol-${r}">${r}</span>
           <div>
-            <b>${c?.nombre || 'Vacante'}</b>
-            <small style="display:block;color:#666">${c?.correo || ''}</small>
+            <b>${escaparHtml(c?.nombre || 'Vacante')}</b>
+            <small style="display:block;color:#666">${escaparHtml(c?.correo || '')}</small>
           </div>
         </div>
       </div>`;
   }).join('');
 
+  const solicitud = state.solicitudCambioEquipo;
+  const pendiente = String(solicitud?.estado || '').toLowerCase() === 'pendiente';
+  const tieneEquipo = Boolean(al.equipo_id || eq.id);
+  const estadoSolicitud = solicitud
+    ? `<div class="solicitud-estado-alumno ${pendiente ? 'pendiente' : ''}">
+        <b>${pendiente ? '⏳ Solicitud pendiente de aprobación docente' : `Estado de la última solicitud: ${escaparHtml(solicitud.estado)}`}</b>
+        <p>Enviada por <b>${escaparHtml(solicitud.autor_nombre || 'Alumno')}</b>${solicitud.fecha_solicitud ? ` · ${escaparHtml(new Date(solicitud.fecha_solicitud).toLocaleString('es-PE'))}` : ''}.</p>
+        <p>Nombre solicitado: <b>${escaparHtml(solicitud.nombre_solicitado || '—')}</b></p>
+        ${solicitud.trello_solicitado ? `<p>Enlace solicitado: ${escaparHtml(solicitud.trello_solicitado)}</p>` : ''}
+        ${solicitud.respuesta_por ? `<p>Revisado por docente: ${escaparHtml(solicitud.respuesta_por)}</p>` : ''}
+      </div>`
+    : '';
+
   $('#infoMiEquipo').innerHTML = `
     <div style="margin-bottom:20px">
-      <h3>${eq.nombre}</h3>
-      <p class="hint">${eq.grado} · Sección ${eq.seccion || '—'} · Proyecto: <b>${eq.proyecto}</b></p>
-      ${eq.trello_url ? `<p style="margin-top:8px">📋 Tablero Trello: <a href="${eq.trello_url}" target="_blank" rel="noopener" class="btn-trello">Abrir Trello ↗</a></p>` : ''}
+      <h3>${escaparHtml(eq.nombre)}</h3>
+      <p class="hint">${escaparHtml(eq.grado)} · Sección ${escaparHtml(eq.seccion || '—')} · Proyecto: <b>${escaparHtml(eq.proyecto)}</b></p>
+      ${eq.trello_url ? `<p style="margin-top:8px">📋 Tablero Trello: <a href="${escaparHtml(eq.trello_url)}" target="_blank" rel="noopener" class="btn-trello">Abrir Trello ↗</a></p>` : ''}
+    </div>
+
+    <div class="solicitud-edicion-equipo">
+      <h4>✏️ Proponer cambios al nombre o al enlace de Trello</h4>
+      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió.</p>
+      ${!tieneEquipo ? '<p class="hint">Aún no tienes un equipo asignado; solicita ayuda al docente.</p>' : ''}
+      ${solicitudErrorEquipo ? `<p class="error-solicitud-equipo">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
+      ${estadoSolicitud}
+      <form id="formSolicitudCambioEquipo" class="form-solicitud-equipo">
+        <label for="solicitudNombreEquipo">Nombre del equipo</label>
+        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(solicitud?.nombre_solicitado || eq.nombre || '')}" ${pendiente || !tieneEquipo ? 'disabled' : ''}>
+        <label for="solicitudTrelloEquipo">Enlace del tablero Trello</label>
+        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(solicitud?.trello_solicitado ?? eq.trello_url ?? '')}" ${pendiente || !tieneEquipo ? 'disabled' : ''}>
+        <button type="submit" class="btn btn-primary" ${pendiente || !tieneEquipo ? 'disabled' : ''}>Enviar para aprobación</button>
+      </form>
     </div>
 
     <h4 style="margin-bottom:12px;color:var(--azul-oscuro)">👥 Roles del Equipo y Matriz de Respaldo</h4>
@@ -2403,6 +2582,44 @@ function renderMiEquipo() {
       <p>Todos los roles son complementarios. Si un compañero no asiste al laboratorio, su Rol Backup debe tomar la iniciativa para que el proyecto no se detenga.</p>
     </div>
   `;
+  $('#formSolicitudCambioEquipo').onsubmit = enviarSolicitudCambioEquipo;
+}
+
+let solicitudErrorEquipo = '';
+
+async function cargarMiEquipo() {
+  solicitudErrorEquipo = '';
+  state.solicitudCambioEquipo = null;
+  try {
+    const data = await apiGet('solicitudes-equipo');
+    state.solicitudCambioEquipo = data.solicitud || null;
+    if (data.equipo && state.sesion?.equipo) {
+      state.sesion.equipo.nombre = data.equipo.nombre_equipo;
+      state.sesion.equipo.trello_url = data.equipo.trello_url;
+      localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
+    }
+  } catch (e) {
+    solicitudErrorEquipo = `No se pudo consultar la solicitud: ${e.message}. Verifica que code.gs esté actualizado y desplegado.`;
+  }
+  renderMiEquipo();
+}
+
+async function enviarSolicitudCambioEquipo(event) {
+  event.preventDefault();
+  const boton = $('#formSolicitudCambioEquipo button[type="submit"]');
+  boton.disabled = true;
+  try {
+    await apiPost('solicitar-cambio-equipo', {
+      equipo_id: state.sesion.alumno.equipo_id,
+      nombre_equipo: $('#solicitudNombreEquipo').value.trim(),
+      trello_url: $('#solicitudTrelloEquipo').value.trim()
+    });
+    toast('✅ Solicitud enviada. El docente debe aprobarla antes de aplicar el cambio.');
+    await cargarMiEquipo();
+  } catch (e) {
+    toast('❌ No se pudo enviar la solicitud: ' + e.message);
+    boton.disabled = false;
+  }
 }
 
 async function cargarMisNotasAlumno() {
@@ -2576,7 +2793,7 @@ function renderRanking() {
         <td>${r.nombre}${esMio ? ' ⭐ (Tu Equipo)' : ''}</td>
         <td>${r.grado}</td>
         <td style="text-align:center"><b>${r.seccion || '—'}</b></td>
-        <td>${r.proyecto || '—'}</td>
+        <td>${escaparHtml(r.proyecto || '—')}</td>
         <td style="text-align:center">${r.puntos_grupales ?? r.puntos}</td>
         <td style="text-align:center">${r.promedio_individual ?? '—'}</td>
         <td style="text-align:center;color:#174ea6"><b>${r.puntos}</b></td>
@@ -2626,14 +2843,9 @@ function actualizarOpcionesAlumnoNuevoEquipo(rol) {
   const select = $(`#asigRol_${rol}`);
   if (!input || !select) return;
 
-  const normalizarBusqueda = valor => String(valor || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-  const busqueda = normalizarBusqueda(input.value);
+  const busqueda = normalizarBusquedaGestion(input.value);
   const grado = normalizarGrado($('#asigGradoEq').value);
-  const seccion = normalizarBusqueda($('#asigSeccionEq').value);
+  const seccion = normalizarBusquedaGestion($('#asigSeccionEq').value);
   const seleccionadoActual = select.value;
   const seleccionadosOtrosRoles = new Set(['CEO', 'CTO', 'CMO', 'CFO']
     .filter(otroRol => otroRol !== rol)
@@ -2641,31 +2853,47 @@ function actualizarOpcionesAlumnoNuevoEquipo(rol) {
     .filter(Boolean));
 
   const candidatos = state.alumnos.filter(alumno => {
-    if (alumno.equipo_id || seleccionadosOtrosRoles.has(alumno.correo)) return false;
     const nombre = alumno.nombre || [alumno.nombres, alumno.apellidos].filter(Boolean).join(' ');
-    const gradoAlumno = normalizarGrado(alumno.grado);
-    const seccionAlumno = normalizarBusqueda(alumno.seccion);
-    const texto = normalizarBusqueda([nombre, alumno.correo, alumno.dni].filter(Boolean).join(' '));
-    if (grado && gradoAlumno !== grado) return false;
-    if (seccion && seccionAlumno !== seccion) return false;
+    const equipoAlumno = state.equipos.find(e => String(e.equipo_id) === String(alumno.equipo_id));
+    const gradoAlumno = normalizarGrado(alumno.grado || equipoAlumno?.grado);
+    const seccionAlumno = normalizarBusquedaGestion(alumno.seccion || equipoAlumno?.seccion);
+    const esEquipoActual = equipoEnEdicionActual && String(alumno.equipo_id) === equipoEnEdicionActual;
+    if (!esEquipoActual && (!grado || !seccion || gradoAlumno !== grado || seccionAlumno !== seccion)) return false;
+    const texto = normalizarBusquedaGestion([nombre, alumno.correo, alumno.dni].filter(Boolean).join(' '));
     return !busqueda || texto.includes(busqueda);
   });
 
   const opciones = candidatos.map(alumno => {
     const nombre = alumno.nombre || [alumno.nombres, alumno.apellidos].filter(Boolean).join(' ') || alumno.correo;
-    return `<option value="${escaparHtml(alumno.correo)}">${escaparHtml(nombre)} · ${escaparHtml(alumno.grado || '')} ${escaparHtml(alumno.seccion || '')}</option>`;
+    const equipo = state.equipos.find(e => String(e.equipo_id) === String(alumno.equipo_id));
+    const esEquipoActual = equipoEnEdicionActual && String(alumno.equipo_id) === equipoEnEdicionActual;
+    const seleccionadoEnOtroRol = seleccionadosOtrosRoles.has(alumno.correo);
+    const asignadoAOtroEquipo = Boolean(alumno.equipo_id) && !esEquipoActual;
+    const asignado = asignadoAOtroEquipo || seleccionadoEnOtroRol;
+    const etiquetaEstado = asignadoAOtroEquipo
+      ? ` · Ya tiene equipo: ${equipo?.nombre_equipo || alumno.equipo_id}`
+      : esEquipoActual ? ' · En este equipo'
+        : seleccionadoEnOtroRol ? ' · Ya asignado a otro rol' : ' · Disponible';
+    const estadoClass = asignadoAOtroEquipo || seleccionadoEnOtroRol
+      ? ' class="alumno-opcion-asignado" style="color:#b45309;background-color:#fff7ed"'
+      : ' class="alumno-opcion-disponible" style="color:#047857;background-color:#ecfdf5"';
+    return `<option value="${escaparHtml(alumno.correo)}"${estadoClass}${asignado ? ' disabled' : ''}>${escaparHtml(nombre)}${escaparHtml(etiquetaEstado)}</option>`;
   });
-  if (!busqueda && !seleccionadoActual) {
-    opciones.unshift('<option value="">Escribe un nombre o apellido para buscar</option>');
-  } else {
-    opciones.unshift('<option value="">-- Sin asignar --</option>');
-  }
+
   if (seleccionadoActual && !candidatos.some(alumno => alumno.correo === seleccionadoActual)) {
     const actual = state.alumnos.find(alumno => alumno.correo === seleccionadoActual);
     if (actual) {
       const nombre = actual.nombre || [actual.nombres, actual.apellidos].filter(Boolean).join(' ') || actual.correo;
-      opciones.push(`<option value="${escaparHtml(actual.correo)}">${escaparHtml(nombre)}</option>`);
+      opciones.unshift(`<option value="${escaparHtml(actual.correo)}">${escaparHtml(nombre)} · Asignado actualmente</option>`);
     }
+  }
+
+  if (!grado || !seccion) {
+    opciones.unshift('<option value="">Primero selecciona grado y sección</option>');
+  } else if (!opciones.length) {
+    opciones.unshift('<option value="">No hay alumnos que coincidan con la búsqueda</option>');
+  } else {
+    opciones.unshift('<option value="">-- Sin asignar --</option>');
   }
   select.innerHTML = opciones.join('');
   select.value = seleccionadoActual && [...select.options].some(option => option.value === seleccionadoActual)
@@ -2677,11 +2905,19 @@ function actualizarOpcionesAlumnoNuevoEquipo(rol) {
    9. PLAN SEMANAL (MATRIZ DATA)
    ========================================================= */
 function renderPlan() {
-  const d = datosFiltrados();
   const esDocente = state.sesion?.tipo === 'docente';
+  let d = datosFiltrados();
+  if (esDocente) {
+    const grado = $('#planFiltroGrado').value;
+    const rol = $('#planFiltroRol').value;
+    d = state.plan.filter(fila =>
+      (!grado || normalizarGrado(fila.Grado) === normalizarGrado(grado)) &&
+      (!rol || rolCoincide(fila.Rol, rol))
+    );
+  }
   const columnaRecurso = $('#thPlanRecurso');
   columnaRecurso.textContent = esDocente ? 'Material docente' : 'Guía de aprendizaje';
-  $('#tablaPlan tbody').innerHTML = d.map(x => `
+  $('#tablaPlan tbody').innerHTML = d.length ? d.map(x => `
     <tr>
       <td><b>${x.Grado}</b></td>
       <td style="text-align:center"><b>${x.Semana}</b></td>
@@ -2695,7 +2931,28 @@ function renderPlan() {
         esDocente ? x.Link_Presentacion : x.Link_Guia_Aprendizaje,
         esDocente ? 'Abrir presentación' : 'Abrir guía'
       ) || '—'}</td>
-    </tr>`).join('');
+    </tr>`).join('')
+    : '<tr><td colspan="9" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>';
+}
+
+function inicializarFiltrosPlan() {
+  const filtros = $('#filtrosPlanCurricular');
+  if (!filtros) return;
+  const esDocente = state.sesion?.tipo === 'docente';
+  filtros.style.display = esDocente ? 'flex' : 'none';
+  if (!esDocente) return;
+
+  const grados = [...new Set(state.plan.map(fila => String(fila.Grado || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  const roles = [...new Set(state.plan.flatMap(fila =>
+    String(fila.Rol || '').split(/[,;|/]+/).map(rol => rol.trim()).filter(Boolean)
+  ))].sort((a, b) => a.localeCompare(b, 'es'));
+  $('#planFiltroGrado').innerHTML = '<option value="">Todos los grados</option>' +
+    grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+  $('#planFiltroRol').innerHTML = '<option value="">Todos los roles</option>' +
+    roles.map(rol => `<option value="${escaparHtml(rol)}">${escaparHtml(rol)}</option>`).join('');
+  $('#planFiltroGrado').onchange = renderPlan;
+  $('#planFiltroRol').onchange = renderPlan;
 }
 
 /* =========================================================
@@ -3051,6 +3308,7 @@ async function arrancarApp() {
   await Promise.all([cargarPlan(), cargarFrasesMotivacionales()]);
   ponerFraseMotivadoraAleatoria();
   actualizarSelectoresSemana();
+  inicializarFiltrosPlan();
 
   // Filtros de topbar
   const grados = [...new Set(state.plan.map(f => f.Grado))].sort();

@@ -13,11 +13,29 @@
           </div>
         </div>
 
-        <!-- Filtro por Sección para Grupos -->
-        <div class="toolbar" style="margin-top:10px">
-          <label><b>Filtrar por Sección:</b></label>
-          <select id="filtroGestionSeccion" class="select"><option value="">Todas las secciones</option></select>
+        <div class="toolbar filtros-gestion" style="margin-top:10px">
+          <div class="form-field">
+            <label for="filtroGestionGrado"><b>Filtrar por grado:</b></label>
+            <select id="filtroGestionGrado" class="select"><option value="">Todos los grados</option></select>
+          </div>
+          <div class="form-field">
+            <label for="filtroGestionSeccion"><b>Filtrar por sección:</b></label>
+            <select id="filtroGestionSeccion" class="select" disabled><option value="">Primero elija grado</option></select>
+          </div>
         </div>
+
+        <section class="solicitudes-equipo-panel" aria-labelledby="solicitudesEquipoTitulo">
+          <div class="card-header-flex">
+            <div>
+              <h3 id="solicitudesEquipoTitulo">📝 Solicitudes de cambio de equipo</h3>
+              <p class="hint">Revisa quién propone cada cambio. El nombre y el enlace solo se actualizan cuando los apruebas.</p>
+            </div>
+            <span id="solicitudesEquipoContador" class="badge-solicitudes">0 pendientes</span>
+          </div>
+          <div id="solicitudesEquipoLista" aria-live="polite">
+            <p class="hint">Cargando solicitudes...</p>
+          </div>
+        </section>
 
         <!-- Grid de Tarjetas de Equipos con Slots de Roles -->
         <div id="contenedorEquiposVisual" class="equipos-visual-grid">

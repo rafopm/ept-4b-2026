@@ -256,6 +256,62 @@ body.es-alumno .contexto-alumno { display: inline; }
 }
 .btn-trello:hover { background: #026aa7; }
 
+.solicitud-edicion-equipo {
+  max-width: 720px; margin: 20px 0; padding: 18px;
+  border: 1px solid var(--gris-borde); border-radius: 12px; background: #fff;
+}
+.solicitud-edicion-equipo h4 { color: var(--azul-oscuro); margin-bottom: 8px; }
+.aviso-solicitud-equipo, .error-solicitud-equipo {
+  padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;
+  margin-bottom: 12px;
+}
+.aviso-solicitud-equipo { color: #854d0e; background: #fefce8; border: 1px solid #fde68a; }
+.error-solicitud-equipo { color: #991b1b; background: var(--rojo-suave); }
+.form-solicitud-equipo { display: grid; gap: 8px; }
+.form-solicitud-equipo label { font-size: 13px; font-weight: 600; }
+.form-solicitud-equipo input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--gris-borde);
+  border-radius: 8px; font: inherit; margin-bottom: 4px;
+}
+.form-solicitud-equipo input:disabled { background: var(--gris-subtle); color: var(--texto-suave); }
+.form-solicitud-equipo button { justify-self: start; }
+.solicitud-estado-alumno {
+  margin: 12px 0; padding: 12px; border: 1px solid var(--gris-borde);
+  border-radius: 8px; font-size: 13px;
+}
+.solicitud-estado-alumno p { margin-top: 5px; overflow-wrap: anywhere; }
+.solicitud-estado-alumno.pendiente {
+  border-color: #facc15; background: #fefce8; color: #713f12;
+}
+.solicitudes-equipo-panel {
+  margin: 20px 0 24px; padding: 18px; border: 1px solid var(--gris-borde);
+  border-radius: 12px; background: #fafbfd;
+}
+.badge-solicitudes, .solicitud-estado {
+  display: inline-flex; align-items: center; padding: 5px 10px;
+  border-radius: 999px; background: var(--amarillo-suave); color: #854d0e;
+  font-size: 12px; font-weight: 700;
+}
+.solicitud-equipo-card {
+  margin-top: 12px; padding: 16px; border: 1px solid var(--gris-borde);
+  border-left: 4px solid var(--amarillo); border-radius: 10px; background: #fff;
+}
+.solicitud-equipo-cabecera {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
+}
+.solicitud-equipo-card p { margin: 4px 0; overflow-wrap: anywhere; }
+.solicitud-cambios-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px; margin-top: 12px;
+}
+.solicitud-cambios-grid > div {
+  min-width: 0; padding: 10px; border-radius: 8px; background: var(--gris-subtle);
+}
+.solicitud-cambios-grid small { color: var(--texto-suave); font-weight: 600; }
+.solicitud-acciones { justify-content: flex-end; margin-top: 12px; }
+.btn-rechazar-solicitud { color: var(--rojo); }
+
 /* Backup Alert Box */
 .backup-alert-box {
   background: #fefce8; border: 1px solid #fef08a; border-radius: 10px;
@@ -407,6 +463,18 @@ body.es-alumno .contexto-alumno { display: inline; }
 }
 .status-msg { font-size: 13px; font-weight: 600; }
 
+/* Gestión de grupos y asignación de alumnos */
+.filtros-gestion { align-items: flex-end; gap: 12px; }
+.filtros-gestion .form-field { min-width: 190px; }
+.estado-asignacion {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+}
+.estado-asignacion.asignado { color: #9a3412; background: #ffedd5; }
+.estado-asignacion.disponible { color: #047857; background: #d1fae5; }
+.alumno-opcion-asignado { color: #b45309; background-color: #fff7ed; }
+.alumno-opcion-disponible { color: #047857; background-color: #ecfdf5; }
+
 /* ============ GESTIÓN DE EQUIPOS Y ROLES ============ */
 .equipos-visual-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
@@ -520,6 +588,12 @@ body.es-alumno .contexto-alumno { display: inline; }
   border: 1px solid var(--gris-borde); border-radius: 10px;
 }
 .ranking-filters .form-field { min-width: 170px; }
+.filtros-plan {
+  align-items: flex-end; gap: 12px; padding: 12px;
+  margin: 14px 0; background: #f8fafc;
+  border: 1px solid var(--gris-borde); border-radius: 10px;
+}
+.filtros-plan .form-field { min-width: 190px; }
 .tabla-ranking tr.rank-1 { background: #fefce8 !important; }
 .tabla-ranking tr.rank-2 { background: #f1f5f9 !important; }
 .tabla-ranking tr.rank-3 { background: #fef2f2 !important; }
@@ -776,6 +850,8 @@ body.es-alumno .contexto-alumno { display: inline; }
   .grid-dashboard-alumno { grid-template-columns: 1fr; }
   .grid-observaciones { grid-template-columns: 1fr; }
   .toolbar-calificar { flex-direction: column; align-items: stretch; }
+  .solicitud-cambios-grid { grid-template-columns: 1fr; }
+  .solicitud-equipo-cabecera { flex-direction: column; }
 }
 
 @media print {

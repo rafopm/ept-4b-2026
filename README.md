@@ -45,6 +45,12 @@ En **Sorteo y Turnos**, se elige grado y sección antes de sortear. Las opciones
 
 En los rankings de equipos e individual, el docente puede filtrar los resultados por grado, sección y equipo. Al crear un equipo, escribe el nombre o apellido en el buscador del rol para filtrar los alumnos disponibles.
 
+## Cambios de nombre y Trello de equipos
+
+En **Mi Equipo**, los alumnos pueden proponer un nombre nuevo o un enlace de Trello. La solicitud registra el nombre y correo del alumno que la envía y no modifica el equipo hasta que el docente la apruebe en **Grupos y Roles**. El docente también puede rechazarla; el equipo conserva sus datos actuales. Solo se permite una solicitud pendiente por equipo.
+
+Para activar este flujo, copia y despliega la versión actualizada de `code.gs` en Apps Script. La hoja `Solicitudes_Cambio_Equipo` se crea automáticamente al recibir la primera solicitud. El alumno ve el estado y quién envió la solicitud; la interfaz advierte que las propuestas inadecuadas pueden ser rechazadas.
+
 ## Entrega de evidencias
 
 Cada alumno puede registrar una sola evidencia por equipo y semana, ya sea mediante un enlace o un archivo en Drive. Al confirmarse el registro, la entrega queda bloqueada en la aplicacion para evitar cambios mientras el docente la califica. El servidor tambien rechaza nuevos envios para esa misma entrega.
