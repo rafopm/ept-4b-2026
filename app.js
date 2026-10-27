@@ -2556,7 +2556,7 @@ function renderMiEquipo() {
 
     <div class="solicitud-edicion-equipo">
       <h4>✏️ Proponer cambios al nombre o al enlace de Trello</h4>
-      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió; las bromas o propuestas inadecuadas pueden ser rechazadas.</p>
+      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió.</p>
       ${!tieneEquipo ? '<p class="hint">Aún no tienes un equipo asignado; solicita ayuda al docente.</p>' : ''}
       ${solicitudErrorEquipo ? `<p class="error-solicitud-equipo">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
       ${estadoSolicitud}
