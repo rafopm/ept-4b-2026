@@ -15,6 +15,7 @@
                 <th>Entregable Específico</th>
                 <th>Rol Backup</th>
                 <th>Responsabilidad Backup</th>
+                <th id="thPlanRecurso">Guía de aprendizaje</th>
               </tr>
             </thead>
             <tbody></tbody>

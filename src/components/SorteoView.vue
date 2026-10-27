@@ -4,7 +4,7 @@
         <div class="card-header-flex">
           <div>
             <h2>🎲 Sorteo y Turnos de Exposición / Entregas</h2>
-            <p class="hint">Sortea aleatoriamente el orden de presentación de equipos o alumnos y gestiona el tiempo de exposición (Demo Day / Pitch).</p>
+            <p class="hint">Selecciona grado y sección para elegir un representante, ordenar aleatoriamente a los alumnos o elegir un representante por equipo.</p>
           </div>
           <div class="toolbar">
             <button class="btn btn-secondary" id="btnImprimirSorteo">🖨️ Imprimir Turnos</button>
@@ -17,17 +17,22 @@
           <div class="form-field">
             <label><b>1. ¿Qué deseas sortear?</b></label>
             <select id="sorteoTipo" class="select">
-              <option value="grupos">👥 Equipos / Grupos (Turno por Equipo)</option>
-              <option value="alumnos">👤 Alumnos (Secuencia individual)</option>
-              <option value="voceros">🎤 1 Vocero/Representante por Equipo</option>
+              <option value="representante_seccion">🎤 Un representante de la sección</option>
+              <option value="alumnos">👤 Alumnos en orden aleatorio</option>
+              <option value="representantes_equipos">👥 Un representante por equipo</option>
+              <option value="grupos">🏷️ Orden aleatorio de equipos</option>
             </select>
           </div>
           <div class="form-field">
-            <label><b>2. Sección:</b></label>
-            <select id="sorteoSeccion" class="select"><option value="">-- Seleccionar Sección --</option></select>
+            <label><b>2. Grado:</b></label>
+            <select id="sorteoGrado" class="select"><option value="">-- Seleccionar Grado --</option></select>
           </div>
           <div class="form-field">
-            <label><b>3. Tiempo por Turno:</b></label>
+            <label><b>3. Sección:</b></label>
+            <select id="sorteoSeccion" class="select" disabled><option value="">-- Primero elija Grado --</option></select>
+          </div>
+          <div class="form-field">
+            <label><b>4. Tiempo por Turno:</b></label>
             <select id="sorteoTiempo" class="select">
               <option value="3">3 minutos (Elevator Pitch)</option>
               <option value="5" selected>5 minutos (Pitch Estándar)</option>
@@ -36,8 +41,13 @@
             </select>
           </div>
           <div class="form-field form-field-btn">
-            <button class="btn btn-primary btn-lg" id="btnLanzarSorteo">🎲 ¡Sortear Orden!</button>
+            <button class="btn btn-primary btn-lg" id="btnLanzarSorteo" disabled>🎲 ¡Sortear!</button>
           </div>
+        </div>
+
+        <div id="sorteoLoader" class="data-loader" style="display:none" role="status" aria-live="polite">
+          <span class="data-loader-spinner" aria-hidden="true"></span>
+          <span id="sorteoLoaderTexto">Cargando alumnos y equipos…</span>
         </div>
 
         <!-- Caja de Animación de Ruleta (se muestra solo al sortear) -->
@@ -77,7 +87,7 @@
         <div id="sorteoVacio" class="vacio-box">
           <div style="font-size:42px">🎲</div>
           <h3>Aún no se ha realizado ningún sorteo</h3>
-          <p>Selecciona la sección y haz clic en <b>"¡Sortear Orden!"</b> para generar la secuencia aleatoria de exposición o entregas.</p>
+          <p>Selecciona el grado y la sección, luego el tipo de sorteo que necesitas.</p>
         </div>
 
         <div class="tabla-wrap" id="sorteoTablaWrap" style="display:none">

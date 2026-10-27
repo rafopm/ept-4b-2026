@@ -4,7 +4,7 @@
         <div class="card-header-flex">
           <div>
             <h2>⚡ Calificación Ágil y Automatizada (Core)</h2>
-            <p class="hint">El sistema lee automáticamente el plan semanal. Selecciona sección, equipo y semana para cargar consignas, evidencias y notas.</p>
+            <p class="hint">Selecciona grado y sección para evaluar a toda la sección, o elige un equipo para la evaluación grupal.</p>
           </div>
           <div class="badge-ley">⚖️ Ley 32172: Verificable en PC</div>
         </div>
@@ -12,27 +12,36 @@
         <!-- Barra de Selección en Cascada -->
         <div class="toolbar toolbar-calificar">
           <div class="form-field">
-            <label>1. Sección:</label>
-            <select id="agilSeccion" class="select"><option value="">-- Seleccionar Sección --</option></select>
+            <label>1. Grado:</label>
+            <select id="agilGrado" class="select"><option value="">-- Seleccionar Grado --</option></select>
           </div>
           <div class="form-field">
-            <label>2. Equipo:</label>
-            <select id="agilEquipo" class="select"><option value="">-- Primero elija Sección --</option></select>
+            <label>2. Sección:</label>
+            <select id="agilSeccion" class="select" disabled><option value="">-- Primero elija Grado --</option></select>
           </div>
           <div class="form-field">
-            <label>3. Semana:</label>
-            <select id="agilSemana" class="select">
-              <option value="1">Semana 1 · Equipo y Problema</option>
-              <option value="2">Semana 2 · Solución y MVP</option>
-              <option value="3">Semana 3 · Canales e Ingresos</option>
-              <option value="4">Semana 4 · Métricas y Ajustes</option>
-              <option value="5">Semana 5 · Testeo y Pitch</option>
-              <option value="6">Semana 6 · Feria / Demo Day</option>
+            <label>3. Modalidad:</label>
+            <select id="agilModalidad" class="select" disabled>
+              <option value="equipo">Evaluar equipo (según tipo de semana)</option>
+              <option value="seccion">Evaluar sección (solo individual)</option>
             </select>
           </div>
-          <div class="form-field form-field-btn">
-            <button class="btn btn-secondary" id="btnCargarCalificacionAgil">🔄 Cargar Datos</button>
+          <div class="form-field" id="agilCampoEquipo">
+            <label>4. Equipo:</label>
+            <select id="agilEquipo" class="select" disabled><option value="">-- Primero elija Grado y Sección --</option></select>
           </div>
+          <div class="form-field">
+            <label>5. Semana:</label>
+            <select id="agilSemana" class="select" disabled><option value="">-- Primero elija Equipo --</option></select>
+          </div>
+          <div class="form-field form-field-btn">
+            <button class="btn btn-secondary" id="btnCargarCalificacionAgil">🔄 Cargar Evaluación</button>
+          </div>
+        </div>
+
+        <div id="agilLoader" class="data-loader" style="display:none" role="status" aria-live="polite">
+          <span class="data-loader-spinner" aria-hidden="true"></span>
+          <span id="agilLoaderTexto">Cargando datos de evaluación…</span>
         </div>
 
         <!-- Banner de Contexto de la Semana -->
@@ -55,11 +64,18 @@
           </div>
         </div>
 
+        <div id="agilAvisoSemanaInicial" class="ley-box" style="display:none;margin:12px 0">
+          Semana 0: califica a cada estudiante de manera individual. No se registra una nota grupal porque los equipos aún se estaban formando.
+        </div>
+        <div id="agilAvisoSeccion" class="ley-box" style="display:none;margin:12px 0">
+          Evaluación individual de toda la sección. No se mostrará ni guardará una nota grupal.
+        </div>
+
         <!-- Contenedor Principal de Calificación -->
         <div id="agilPanelCalificacion" style="display:none">
           
           <!-- RÚBRICA GRUPAL -->
-          <div class="bloque-calificacion">
+          <div class="bloque-calificacion" id="agilBloqueGrupal">
             <div class="bloque-header">
               <h3>👥 1. Evaluación Grupal (Entregable Conjunto)</h3>
               <span class="max-badge" id="agilMaxGrupal">Máx 20 pts</span>

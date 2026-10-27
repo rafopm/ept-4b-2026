@@ -5,8 +5,8 @@
         <div class="motivacional-content">
           <div class="motivacional-icon">💡</div>
           <div>
-            <blockquote id="textoFraseMotivadora">"La mejor forma de predecir el futuro es crearlo."</blockquote>
-            <cite id="autorFraseMotivadora">— Peter Drucker</cite>
+            <blockquote id="textoFraseMotivadora"></blockquote>
+            <cite id="autorFraseMotivadora"></cite>
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" id="btnNuevaFrase" title="Ver otra frase">✨ Otra frase</button>
@@ -18,21 +18,16 @@
         <!-- Header Alumno con Semana -->
         <div class="semana-header-card">
           <div class="semana-info">
-            <span class="badge-rol" id="dashAlumnoBadgeRol">CEO</span>
+            <span class="badge-rol" id="dashAlumnoBadgeRol"></span>
             <div>
-              <h2 id="dashAlumnoTituloProyecto">Proyecto: Cargando...</h2>
-              <p class="hint" id="dashAlumnoSubtitulo">Grado y Sección</p>
+              <h2 id="dashAlumnoTituloProyecto"></h2>
+              <p class="hint" id="dashAlumnoSubtitulo"></p>
             </div>
           </div>
           <div class="semana-selector-wrap">
             <label for="dashAlumnoSemanaSelect"><b>Semana de Trabajo:</b></label>
             <select id="dashAlumnoSemanaSelect" class="select select-lg">
-              <option value="1">Semana 1 · Equipo y Problema</option>
-              <option value="2">Semana 2 · Solución y MVP</option>
-              <option value="3">Semana 3 · Canales e Ingresos</option>
-              <option value="4">Semana 4 · Métricas y Ajustes</option>
-              <option value="5">Semana 5 · Testeo y Pitch</option>
-              <option value="6">Semana 6 · Feria / Demo Day</option>
+              <option value="">Cargando semanas...</option>
             </select>
           </div>
         </div>
@@ -41,28 +36,30 @@
           <!-- Tarea Individual por Rol -->
           <div class="card card-tarea-individual">
             <div class="card-tag">🎯 Tu Tarea Individual de la Semana</div>
-            <h3 id="dashAlumnoTemaSemanal">Tema Semanal</h3>
+            <h3 id="dashAlumnoTemaSemanal"></h3>
             
             <div class="tarea-box">
               <label>📝 Tarea obligatoria según tu rol:</label>
-              <p id="dashAlumnoTareaDetallada" class="tarea-texto">Cargando tarea...</p>
+              <p id="dashAlumnoTareaDetallada" class="tarea-texto"></p>
             </div>
 
             <div class="entregable-box">
               <label>📦 Entregable específico a presentar en la PC:</label>
-              <p id="dashAlumnoEntregableEspecifico" class="entregable-texto">Cargando entregable...</p>
+              <p id="dashAlumnoEntregableEspecifico" class="entregable-texto"></p>
             </div>
 
+            <div class="plan-link-wrap" id="dashAlumnoGuiaAprendizaje"></div>
+
             <div class="ley-box">
-              ⚖️ <b>Nota Ley 32172:</b> <span id="dashAlumnoLey">Uso computadoras IE. Sin celulares.</span>
+              ⚖️ <b>Nota Ley 32172:</b> <span id="dashAlumnoLey"></span>
             </div>
           </div>
 
           <!-- Entregable Grupal & Trello -->
           <div class="card card-grupal-trello">
             <div class="card-tag">👥 Entregable Grupal del Equipo</div>
-            <h3 id="dashAlumnoProyectoNombre">Proyecto de Equipo</h3>
-            <p class="hint" id="dashAlumnoTecnologia">Tecnología: Canva / Glide / Sheets</p>
+            <h3 id="dashAlumnoProyectoNombre"></h3>
+            <p class="hint" id="dashAlumnoTecnologia"></p>
 
             <div class="trello-callout">
               <div class="trello-icon">📋</div>
@@ -138,6 +135,7 @@
               <strong>Evidencia Registrada para esta semana:</strong>
               <a id="linkEvidenciaActual" href="#" target="_blank" rel="noopener">Ver entrega ↗</a>
               <small id="fechaEvidenciaActual">—</small>
+              <small id="mensajeEntregaBloqueada" style="display:none">El envío está bloqueado. No puedes modificarlo ni volver a enviar esta entrega; consulta con tu docente si necesitas corregirla.</small>
             </div>
           </div>
         </div>

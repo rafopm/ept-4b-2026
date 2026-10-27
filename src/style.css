@@ -383,6 +383,12 @@ body.es-alumno .contexto-alumno { display: inline; }
 .evidencia-tag-card.sin-link {
   background: #fffbeb; border: 1px solid #fef3c7; color: #92400e;
 }
+.acciones-incumplimiento {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+.acciones-incumplimiento .btn { color: var(--rojo); }
+.acciones-incumplimiento small { color: var(--texto-suave); font-size: 11px; }
 .btn-link-evidencia {
   color: var(--azul); text-decoration: underline; font-weight: 700; margin-left: 6px;
 }
@@ -508,6 +514,12 @@ body.es-alumno .contexto-alumno { display: inline; }
 .tabla tr:hover td { background: #f8fafc; }
 
 /* Ranking Medallas */
+.ranking-filters {
+  align-items: flex-end; gap: 12px; padding: 12px;
+  margin: 12px 0; background: #f8fafc;
+  border: 1px solid var(--gris-borde); border-radius: 10px;
+}
+.ranking-filters .form-field { min-width: 170px; }
 .tabla-ranking tr.rank-1 { background: #fefce8 !important; }
 .tabla-ranking tr.rank-2 { background: #f1f5f9 !important; }
 .tabla-ranking tr.rank-3 { background: #fef2f2 !important; }
@@ -559,6 +571,18 @@ body.es-alumno .contexto-alumno { display: inline; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ============ SORTEO Y TURNOS ============ */
+.data-loader {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 18px; margin: 14px 0; color: var(--azul-oscuro);
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+  font-size: 13px; font-weight: 600;
+}
+.data-loader-spinner {
+  width: 22px; height: 22px; flex: 0 0 22px;
+  border: 3px solid #bfdbfe; border-top-color: var(--azul);
+  border-radius: 50%; animation: dataLoaderGiro .75s linear infinite;
+}
+@keyframes dataLoaderGiro { to { transform: rotate(360deg); } }
 .sorteo-animacion {
   text-align: center; padding: 26px; background: #fdf2f8;
   border-radius: 14px; border: 2px dashed #f472b6; margin: 16px 0;

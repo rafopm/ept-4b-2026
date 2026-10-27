@@ -7,6 +7,20 @@
             <p class="hint">Puntos obtenidos por desempeño de rol + bonificaciones de rescate Backup y colaboraciones.</p>
           </div>
         </div>
+        <div id="filtrosRankingIndividual" class="toolbar ranking-filters" style="display:none">
+          <div class="form-field">
+            <label>Grado</label>
+            <select id="rankingIndividualGrado" class="select"><option value="">Todos los grados</option></select>
+          </div>
+          <div class="form-field">
+            <label>Sección</label>
+            <select id="rankingIndividualSeccion" class="select"><option value="">Todas las secciones</option></select>
+          </div>
+          <div class="form-field">
+            <label>Equipo</label>
+            <select id="rankingIndividualEquipo" class="select"><option value="">Todos los equipos</option></select>
+          </div>
+        </div>
         <div class="tabla-wrap">
           <table class="tabla tabla-ranking" id="tablaRankingIndividual">
             <thead>

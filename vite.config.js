@@ -8,9 +8,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://4b-ept-2026.rpampavilca.workers.dev',
+        target: 'https://script.google.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '') || '/',
+        rewrite: (path) => path.replace(/^\/api/, '/macros/s/AKfycbzPEqpn04Lt_n4QAEre1AxosjvEl2hZ6odx5CfWgpifQxQ4Tma9YptvCIurTnO9jLDB/exec'),
       },
     },
   },

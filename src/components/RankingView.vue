@@ -8,6 +8,20 @@
           </div>
           <div class="ranking-filter-badge" id="badgeFiltroSeccion">Todas las Secciones</div>
         </div>
+        <div id="filtrosRankingEquipos" class="toolbar ranking-filters" style="display:none">
+          <div class="form-field">
+            <label>Grado</label>
+            <select id="rankingEquiposGrado" class="select"><option value="">Todos los grados</option></select>
+          </div>
+          <div class="form-field">
+            <label>Sección</label>
+            <select id="rankingEquiposSeccion" class="select"><option value="">Todas las secciones</option></select>
+          </div>
+          <div class="form-field">
+            <label>Equipo</label>
+            <select id="rankingEquiposEquipo" class="select"><option value="">Todos los equipos</option></select>
+          </div>
+        </div>
         <div class="tabla-wrap">
           <table class="tabla tabla-ranking" id="tablaRanking">
             <thead>
