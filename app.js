@@ -153,6 +153,7 @@ async function hacerLoginConToken(correo) {
       if (data.rubrica) state.rubricaGrupal = data.rubrica;
       if (data.rubrica_individual) state.rubricaIndividual = data.rubrica_individual;
       if (data.plan) state.plan = data.plan;
+      if (data.evidencias) state.evidencias = data.evidencias;
     } else if (data.tipo === 'alumno') {
       state.sesion = {
         tipo: 'alumno',
@@ -458,7 +459,7 @@ async function cargarRanking() {
   try {
     const seccion = state.sesion?.tipo === 'alumno'
       ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-      : $('#filtroSeccion').value || '';
+      : '';
     const data = await apiGet('ranking', seccion ? { seccion } : {});
     state.ranking = data.ranking || [];
     renderRanking();
@@ -471,7 +472,7 @@ async function cargarRankingIndividual() {
   try {
     const seccion = state.sesion?.tipo === 'alumno'
       ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-      : $('#filtroSeccion').value || '';
+      : '';
     const data = await apiGet('ranking-individual', seccion ? { seccion } : {});
     state.rankingIndividual = data.ranking || [];
     renderRankingIndividual();
@@ -856,14 +857,20 @@ async function inicializarCalificacionAgil() {
       state.alumnos = login.alumnos || [];
       state.rubricaGrupal = login.rubrica || [];
       state.rubricaIndividual = login.rubrica_individual || [];
+      state.evidencias = login.evidencias || [];
     }
 
-    const grados = [...new Set(state.equipos.map(e => String(e.grado || '').trim()).filter(Boolean))]
+    const grados = [...new Set([
+      ...state.equipos.map(e => String(e.grado || '').trim()),
+      ...state.alumnos.map(a => String(a.grado || '').trim())
+    ].filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
     $('#agilGrado').innerHTML = '<option value="">-- Seleccionar Grado --</option>' +
       grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
     $('#agilSeccion').innerHTML = '<option value="">-- Primero elija Grado --</option>';
     $('#agilEquipo').innerHTML = '<option value="">-- Primero elija Grado y Sección --</option>';
+    $('#agilModalidad').value = 'equipo';
+    $('#agilModalidad').disabled = true;
     $('#agilSeccion').disabled = true;
     $('#agilEquipo').disabled = true;
     $('#agilSemana').disabled = true;
@@ -871,17 +878,25 @@ async function inicializarCalificacionAgil() {
 
     $('#agilGrado').onchange = () => {
       const grado = $('#agilGrado').value;
-      const secciones = [...new Set(state.equipos
-        .filter(e => normalizarGrado(e.grado) === normalizarGrado(grado))
-        .map(e => String(e.seccion || '').trim())
-        .filter(Boolean))].sort();
+      const equiposGrado = state.equipos.filter(e => normalizarGrado(e.grado) === normalizarGrado(grado));
+      const idsEquipos = new Set(equiposGrado.map(e => String(e.equipo_id)));
+      const secciones = [...new Set([
+        ...equiposGrado.map(e => String(e.seccion || '').trim()),
+        ...state.alumnos
+          .filter(a => normalizarGrado(a.grado) === normalizarGrado(grado) ||
+            (!a.grado && idsEquipos.has(String(a.equipo_id))))
+          .map(a => String(a.seccion || '').trim())
+      ].filter(Boolean))].sort();
       $('#agilSeccion').innerHTML = '<option value="">-- Seleccionar Sección --</option>' +
         secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+      $('#agilModalidad').value = 'equipo';
+      $('#agilModalidad').disabled = true;
       $('#agilEquipo').innerHTML = '<option value="">-- Primero elija Sección --</option>';
       $('#agilSeccion').disabled = !grado || !secciones.length;
       $('#agilEquipo').disabled = true;
       $('#agilSemana').disabled = true;
       actualizarSemanasCalificacionAgil(grado);
+      actualizarModoCalificacionAgil();
       ocultarPanelCalificacionAgil();
     };
 
@@ -894,11 +909,19 @@ async function inicializarCalificacionAgil() {
       );
       $('#agilEquipo').innerHTML = '<option value="">-- Seleccionar Equipo --</option>' +
         eqs.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)} (${escaparHtml(e.grado)})</option>`).join('');
-      $('#agilEquipo').disabled = !seccion || !eqs.length;
+      $('#agilModalidad').disabled = !seccion;
+      $('#agilModalidad').value = 'equipo';
+      $('#agilEquipo').disabled = true;
       $('#agilSemana').disabled = true;
+      actualizarSemanasCalificacionAgil(grado);
+      actualizarModoCalificacionAgil();
       ocultarPanelCalificacionAgil();
     };
 
+    $('#agilModalidad').onchange = () => {
+      actualizarModoCalificacionAgil();
+      ocultarPanelCalificacionAgil();
+    };
     $('#agilEquipo').onchange = () => {
       $('#agilSemana').disabled = !$('#agilEquipo').value;
       ocultarPanelCalificacionAgil();
@@ -912,6 +935,18 @@ async function inicializarCalificacionAgil() {
   } catch (e) {
     toast('❌ Error inicializando calificación: ' + e.message);
   }
+}
+
+function actualizarModoCalificacionAgil() {
+  const modo = $('#agilModalidad').value;
+  const haySeccion = Boolean($('#agilSeccion').value);
+  const soloSeccion = modo === 'seccion';
+  $('#agilCampoEquipo').style.display = soloSeccion ? 'none' : '';
+  $('#agilEquipo').disabled = !haySeccion || soloSeccion;
+  $('#agilSemana').disabled = !haySeccion || (!soloSeccion && !$('#agilEquipo').value);
+  $('#btnCargarCalificacionAgil').textContent = soloSeccion
+    ? '🔄 Cargar alumnos de la sección'
+    : '🔄 Cargar Evaluación';
 }
 
 function actualizarSemanasCalificacionAgil(grado) {
@@ -932,60 +967,96 @@ function actualizarSemanasCalificacionAgil(grado) {
   select.value = semanasOrdenadas.some(semana => String(semana) === semanaActual) ? semanaActual : '';
 }
 
+function semanaSoloIndividual(planSemana, semana) {
+  if (Number(semana) === 0) return true;
+  return planSemana.some(fila => {
+    const tipo = String(fila.Tipo_Calificacion || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    return tipo === 'individual' || tipo === 'solo individual';
+  });
+}
+
 function ocultarPanelCalificacionAgil() {
   $('#agilPanelCalificacion').style.display = 'none';
   $('#agilBannerSemana').style.display = 'none';
+  $('#agilAvisoSeccion').style.display = 'none';
 }
 
 async function cargarCalificacionAgil() {
   const grado = $('#agilGrado').value;
   const seccion = $('#agilSeccion').value;
   const eqId = $('#agilEquipo').value;
+  const modo = $('#agilModalidad').value;
+  const individualOnly = modo === 'seccion';
   const semanaSeleccionada = $('#agilSemana').value;
   if (!grado) { toast('⚠️ Por favor selecciona un grado'); return; }
   if (!seccion) { toast('⚠️ Por favor selecciona una sección'); return; }
-  if (!eqId) { toast('⚠️ Por favor selecciona un equipo'); return; }
+  if (!individualOnly && !eqId) { toast('⚠️ Por favor selecciona un equipo'); return; }
   if (semanaSeleccionada === '') { toast('⚠️ Por favor selecciona una semana'); return; }
   const semana = normalizarSemana(semanaSeleccionada);
 
   try {
     $('#btnCargarCalificacionAgil').disabled = true;
-    $('#btnCargarCalificacionAgil').textContent = '⏳ Cargando...';
+    ocultarPanelCalificacionAgil();
+    $('#agilLoaderTexto').textContent = individualOnly
+      ? 'Cargando estudiantes y calificaciones de la sección…'
+      : 'Cargando consignas, evidencias y calificaciones…';
+    $('#agilLoader').style.display = 'flex';
 
-    const equipo = state.equipos.find(e => String(e.equipo_id) === String(eqId));
-    const grado = equipo?.grado || '1° Secundaria';
+    const equiposSeccion = state.equipos.filter(e =>
+      normalizarGrado(e.grado) === normalizarGrado(grado) &&
+      String(e.seccion).trim() === String(seccion).trim()
+    );
+    const equiposObjetivo = individualOnly
+      ? equiposSeccion
+      : equiposSeccion.filter(e => String(e.equipo_id) === String(eqId));
+    const idsEquipos = new Set(equiposObjetivo.map(e => String(e.equipo_id)));
 
-    // Cargar plan de esta semana y grado
+    const equipo = individualOnly ? null : equiposObjetivo[0];
     const planSemana = state.plan.filter(p =>
-      String(p.Grado).trim() === String(grado).trim() &&
+      normalizarGrado(p.Grado) === normalizarGrado(grado) &&
       Number(p.Semana) === semana
     );
+    const evaluacionSoloIndividual = semanaSoloIndividual(planSemana, semana);
 
-    // Intentar leer calificaciones previas de la API
-    let datosApi = null;
-    try {
-      datosApi = await apiGet('calificacion-semana', { equipo_id: eqId, semana });
-    } catch (e) {
-      // Si la API remota aún no tiene el endpoint nuevo, sintetizar desde state
-      datosApi = null;
-    }
+    const datosPorEquipo = {};
+    await Promise.all(equiposObjetivo.map(async equipoObjetivo => {
+      datosPorEquipo[String(equipoObjetivo.equipo_id)] = await apiGet('calificacion-semana', {
+        equipo_id: equipoObjetivo.equipo_id,
+        semana
+      });
+    }));
 
-    // Miembros del equipo
-    const miembros = state.alumnos.filter(a => String(a.equipo_id) === String(eqId));
+    const miembros = state.alumnos.filter(a => idsEquipos.has(String(a.equipo_id)) ||
+      (individualOnly &&
+        normalizarGrado(a.grado) === normalizarGrado(grado) &&
+        String(a.seccion).trim() === String(seccion).trim()));
+    if (!miembros.length) throw new Error('No hay alumnos asignados a esta selección.');
 
-    // Buscar evidencias cargadas
-    const evidenciasSemana = state.evidencias.filter(ev =>
-      String(ev.equipo_id) === String(eqId) && Number(ev.semana) === semana
+    const evidenciasSemana = [
+      ...state.evidencias.filter(ev => idsEquipos.has(String(ev.equipo_id)) && Number(ev.semana) === semana),
+      ...Object.values(datosPorEquipo).flatMap(datos => datos.evidencias || [])
+    ].filter((evidencia, index, lista) =>
+      lista.findIndex(otra => String(otra.correo_alumno).toLowerCase() === String(evidencia.correo_alumno).toLowerCase() &&
+        String(otra.equipo_id) === String(evidencia.equipo_id)) === index
     );
 
     datosCalificacionAgilActual = {
-      equipo_id: eqId,
+      equipo_id: individualOnly ? '' : eqId,
       equipo,
+      grado,
+      seccion,
+      modo: individualOnly ? 'seccion' : 'equipo',
       semana,
+      evaluacionSoloIndividual,
       planSemana,
       miembros,
       evidencias: evidenciasSemana,
-      datosApi
+      datosApi: datosPorEquipo[String(eqId)] || null,
+      datosApiPorEquipo: datosPorEquipo
     };
 
     renderPanelCalificacionAgil();
@@ -993,44 +1064,53 @@ async function cargarCalificacionAgil() {
   } catch (e) {
     toast('❌ ' + e.message);
   } finally {
+    $('#agilLoader').style.display = 'none';
     $('#btnCargarCalificacionAgil').disabled = false;
-    $('#btnCargarCalificacionAgil').textContent = '🔄 Cargar Datos';
+    actualizarModoCalificacionAgil();
   }
 }
 
 function renderPanelCalificacionAgil() {
-  const { equipo, semana, planSemana, miembros, evidencias, datosApi } = datosCalificacionAgilActual;
+  const { equipo, grado, seccion, modo, semana, evaluacionSoloIndividual, planSemana, miembros, evidencias, datosApi, datosApiPorEquipo = {} } = datosCalificacionAgilActual;
   const esSemanaInicial = semana === 0;
-  $('#agilBloqueGrupal').style.display = esSemanaInicial ? 'none' : 'block';
+  const evaluacionIndividual = evaluacionSoloIndividual || modo === 'seccion';
+  $('#agilBloqueGrupal').style.display = evaluacionIndividual ? 'none' : 'block';
   $('#agilAvisoSemanaInicial').style.display = esSemanaInicial ? 'block' : 'none';
-  $('#agilEstadoCalificacion').textContent = esSemanaInicial
+  $('#agilAvisoSeccion').style.display = modo === 'seccion' ? 'block' : 'none';
+  $('#agilEstadoCalificacion').textContent = evaluacionIndividual
     ? '🧍 Evaluación individual'
     : datosApi?.calificacion_grupal_existente?.calificado ? '✅ Ya Calificado (Modo Edición)' : '⏳ Pendiente de Calificar';
 
   // Banner
-  $('#agilProyectoNombre').textContent = equipo.proyecto || 'Proyecto Emprendedor';
+  $('#agilProyectoNombre').textContent = modo === 'seccion'
+    ? `${grado} · Sección ${seccion}`
+    : equipo?.proyecto || 'Proyecto Emprendedor';
   $('#agilTecnologia').textContent = planSemana[0]?.Tecnologia || 'Herramientas Digitales';
-  $('#agilTrelloLink').innerHTML = equipo.trello_url
+  $('#agilTrelloLink').innerHTML = equipo?.trello_url
     ? `<a href="${equipo.trello_url}" target="_blank" rel="noopener" class="btn-trello" style="padding:2px 8px;font-size:11px">🔗 Abrir Trello ↗</a>`
-    : '<em>Sin enlace</em>';
+    : modo === 'seccion' ? '<em>No aplica a toda la sección</em>' : '<em>Sin enlace</em>';
 
   const yaCalificado = datosApi?.calificacion_grupal_existente?.calificado;
-  if (!esSemanaInicial) {
-    $('#agilEstadoCalificacion').textContent = yaCalificado ? '✅ Ya Calificado (Modo Edición)' : '⏳ Pendiente de Calificar';
+  if (!evaluacionIndividual) {
+    $('#agilEstadoCalificacion').textContent = modo === 'seccion'
+      ? '🧍 Evaluación individual de sección'
+      : yaCalificado ? '✅ Ya Calificado (Modo Edición)' : '⏳ Pendiente de Calificar';
   }
-  $('#agilEstadoCalificacion').className = 'badge-estado ' + (yaCalificado ? 'calificado' : 'pendiente');
+  $('#agilEstadoCalificacion').className = 'badge-estado ' + (yaCalificado && modo !== 'seccion' ? 'calificado' : 'pendiente');
   $('#agilBannerSemana').style.display = 'flex';
 
   // Consigna grupal de la semana
-  $('#agilConsignaGrupalTexto').textContent = planSemana[0]?.Tema_Semanal
-    ? `${planSemana[0].Tema_Semanal} — Todos los miembros deben colaborar en la entrega conjunta.`
-    : `Semana ${semana} de trabajo.`;
+  $('#agilConsignaGrupalTexto').textContent = evaluacionIndividual
+    ? `${planSemana[0]?.Tema_Semanal || `Semana ${semana}`} — Evaluación individual; no se registra nota grupal.`
+    : planSemana[0]?.Tema_Semanal
+      ? `${planSemana[0].Tema_Semanal} — Todos los miembros deben colaborar en la entrega conjunta.`
+      : `Semana ${semana} de trabajo.`;
 
   // Rúbrica grupal
   const rubricaG = [...(state.rubricaGrupal || [])].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0));
   const prevG = datosApi?.calificacion_grupal_existente?.criterios || [];
 
-  $('#tablaRubricaGrupalAgil tbody').innerHTML = esSemanaInicial ? '' : rubricaG.map(r => {
+  $('#tablaRubricaGrupalAgil tbody').innerHTML = evaluacionIndividual ? '' : rubricaG.map(r => {
     const valPrev = prevG.find(p => p.criterio_id === r.criterio_id)?.puntaje ?? (yaCalificado ? 0 : r.peso_max || 5);
     return `
       <tr data-criterio="${r.criterio_id}">
@@ -1046,12 +1126,12 @@ function renderPanelCalificacionAgil() {
       </tr>`;
   }).join('');
 
-  $('#agilObsPcG处').value = esSemanaInicial ? '' : datosApi?.calificacion_grupal_existente?.observacion_pc || '';
-  $('#agilComentarioGrupal').value = esSemanaInicial ? '' : datosApi?.calificacion_grupal_existente?.comentario || '';
-  $('#btnGuardarTodoAgil').textContent = esSemanaInicial
+  $('#agilObsPcG处').value = evaluacionIndividual ? '' : datosApi?.calificacion_grupal_existente?.observacion_pc || '';
+  $('#agilComentarioGrupal').value = evaluacionIndividual ? '' : datosApi?.calificacion_grupal_existente?.comentario || '';
+  $('#btnGuardarTodoAgil').textContent = evaluacionIndividual
     ? '💾 Guardar calificaciones individuales'
     : '💾 Guardar / Sobrescribir Calificación Semanal';
-  $('#btnAutoLlenar5').textContent = esSemanaInicial
+  $('#btnAutoLlenar5').textContent = evaluacionIndividual
     ? '⭐ Todo 5 (evaluación individual)'
     : '⭐ Todo 5 (Excelente desempeño)';
 
@@ -1065,9 +1145,13 @@ function renderPanelCalificacionAgil() {
     contAlumnos.innerHTML = miembros.map(al => {
       const rolUpper = String(al.rol || 'CEO').toUpperCase();
       const planRol = planSemana.find(p => rolCoincide(p.Rol, rolUpper)) || {};
-      const evAl = evidencias.find(e => String(e.correo_alumno).toLowerCase() === String(al.correo).toLowerCase());
-      
-      const prevInd = datosApi?.calificaciones_individuales_existentes?.find(x =>
+      const evAl = evidencias.find(e =>
+        String(e.correo_alumno).toLowerCase() === String(al.correo).toLowerCase() &&
+        (!al.equipo_id || String(e.equipo_id) === String(al.equipo_id))
+      );
+      const datosApiAlumno = datosApiPorEquipo[String(al.equipo_id)] || datosApi;
+
+      const prevInd = datosApiAlumno?.calificaciones_individuales_existentes?.find(x =>
         String(x.correo_alumno).toLowerCase() === String(al.correo).toLowerCase()
       );
 
@@ -1081,7 +1165,7 @@ function renderPanelCalificacionAgil() {
            </div>`;
 
       return `
-        <div class="alumno-eval-card" data-correo="${al.correo}">
+        <div class="alumno-eval-card" data-correo="${escaparHtml(al.correo)}" data-equipo-id="${escaparHtml(al.equipo_id || '')}">
           <div>
             <div class="alumno-eval-header">
               <div>
@@ -1119,7 +1203,11 @@ function renderPanelCalificacionAgil() {
               </thead>
               <tbody>
                 ${rubricaI.map(ri => {
-                  const valPrevI = prevInd?.criterios?.find(c => c.criterio_id === ri.criterio_id)?.puntaje ?? (yaCalificado ? 0 : ri.peso_max || 5);
+                  const criterioPrevio = prevInd?.criterios?.find(c => c.criterio_id === ri.criterio_id);
+                  const puntajePredeterminado = evAl?.link_evidencia
+                    ? (prevInd?.calificado ? 0 : Number(ri.peso_max) || 5)
+                    : 0;
+                  const valPrevI = criterioPrevio?.puntaje ?? puntajePredeterminado;
                   return `
                     <tr data-criterio="${ri.criterio_id}">
                       <td>${ri.nombre}</td>
@@ -1174,10 +1262,11 @@ function aplicarNotaCeroIndividual(button) {
 async function guardarCalificacionAgilCompleta() {
   if (!datosCalificacionAgilActual) return;
   const { equipo_id, semana } = datosCalificacionAgilActual;
-  const esSemanaInicial = semana === 0;
+  const soloIndividual = datosCalificacionAgilActual.evaluacionSoloIndividual ||
+    datosCalificacionAgilActual.modo === 'seccion';
 
   // 1. Recolectar Grupal
-  const filasG = esSemanaInicial ? [] : $$('#tablaRubricaGrupalAgil tbody tr');
+  const filasG = soloIndividual ? [] : $$('#tablaRubricaGrupalAgil tbody tr');
   const criteriosGrupales = filasG.map(tr => ({
     criterio_id: tr.dataset.criterio,
     puntaje: Number(tr.querySelector('.input-puntaje-g').value) || 0
@@ -1199,54 +1288,78 @@ async function guardarCalificacionAgilCompleta() {
 
     return {
       correo_alumno: correo,
+      equipo_id: card.dataset.equipoId,
       criterios,
       observacion_pc: obsInd,
       bonus_backup: asumioBackup ? { puntos: 10, motivo: `Asumió Rol Backup en Semana ${semana}` } : null
     };
   });
-
-  const entregaId = `${equipo_id}_SEM_${semana}`;
+  if (evaluacionesIndividuales.some(ind => !ind.correo_alumno || !ind.equipo_id)) {
+    toast('❌ No se puede guardar: cada alumno debe tener correo y equipo asignados.');
+    return;
+  }
 
   try {
     $('#btnGuardarTodoAgil').disabled = true;
+    $('#agilLoaderTexto').textContent = 'Guardando calificaciones…';
+    $('#agilLoader').style.display = 'flex';
     $('#agilStatusGuardado').textContent = '⏳ Guardando en la nube...';
     $('#agilStatusGuardado').style.color = 'var(--azul)';
 
-    // Intentar endpoint de calificación unificada
-    try {
-      await apiPost('guardar-calificacion-semana', {
-        equipo_id,
-        semana,
-        entrega_id: entregaId,
-        calificacion_grupal: esSemanaInicial ? null : {
-          criterios: criteriosGrupales,
-          comentario: comGrupal,
-          observacion_pc: obsPcGrupal
-        },
-        calificaciones_individuales: evaluacionesIndividuales
-      });
-    } catch (e) {
-      // Fallback a los endpoints tradicionales si es necesario
-      if (!esSemanaInicial) {
-        await apiPost('calificar', {
-          entrega_id: entregaId,
-          equipo_id: equipo_id,
-          criterios: criteriosGrupales,
-          comentario: comGrupal,
-          observacion_pc: obsPcGrupal
-        });
-      }
+    if (datosCalificacionAgilActual.modo === 'seccion') {
       for (const ind of evaluacionesIndividuales) {
+        const entregaIndividual = `${ind.equipo_id}_SEM_${semana}`;
         await apiPost('calificar-individual', {
-          entrega_id: entregaId,
-          equipo_id: equipo_id,
+          entrega_id: entregaIndividual,
+          equipo_id: ind.equipo_id,
           correo_alumno: ind.correo_alumno,
           criterios: ind.criterios,
           observacion_pc: ind.observacion_pc
         });
-
         if (ind.bonus_backup) {
-          try {
+          await apiPost('otorgar-puntos-extra', {
+            tipo_destinatario: 'alumno',
+            destinatario_id: ind.correo_alumno,
+            puntos: ind.bonus_backup.puntos,
+            motivo: ind.bonus_backup.motivo,
+            categoria: 'backup'
+          });
+        }
+      }
+    } else {
+      const entregaId = `${equipo_id}_SEM_${semana}`;
+      try {
+        await apiPost('guardar-calificacion-semana', {
+          equipo_id,
+          semana,
+          entrega_id: entregaId,
+          calificacion_grupal: soloIndividual ? null : {
+            criterios: criteriosGrupales,
+            comentario: comGrupal,
+            observacion_pc: obsPcGrupal
+          },
+          calificaciones_individuales: evaluacionesIndividuales
+        });
+      } catch (e) {
+        if (!soloIndividual) {
+          await apiPost('calificar', {
+            entrega_id: entregaId,
+            equipo_id,
+            criterios: criteriosGrupales,
+            comentario: comGrupal,
+            observacion_pc: obsPcGrupal
+          });
+        }
+        for (const ind of evaluacionesIndividuales) {
+          await apiPost('calificar-individual', {
+            entrega_id: `${ind.equipo_id}_SEM_${semana}`,
+            equipo_id: ind.equipo_id,
+            correo_alumno: ind.correo_alumno,
+            criterios: ind.criterios,
+            observacion_pc: ind.observacion_pc
+          });
+
+          if (ind.bonus_backup) {
             await apiPost('otorgar-puntos-extra', {
               tipo_destinatario: 'alumno',
               destinatario_id: ind.correo_alumno,
@@ -1254,7 +1367,7 @@ async function guardarCalificacionAgilCompleta() {
               motivo: ind.bonus_backup.motivo,
               categoria: 'backup'
             });
-          } catch (errXp) {}
+          }
         }
       }
     }
@@ -1272,6 +1385,7 @@ async function guardarCalificacionAgilCompleta() {
     $('#agilStatusGuardado').style.color = 'var(--rojo)';
     toast('❌ Error: ' + err.message);
   } finally {
+    $('#agilLoader').style.display = 'none';
     $('#btnGuardarTodoAgil').disabled = false;
   }
 }
@@ -1482,13 +1596,13 @@ function editarEquipoModal(equipoId) {
 function abrirModalCrearEquipo() {
   const roles = ['CEO', 'CTO', 'CMO', 'CFO'];
   const slotsSelects = roles.map(r => {
-    const opciones = '<option value="">-- Sin asignar --</option>' + state.alumnos.map(al =>
-      `<option value="${al.correo}">${al.nombre || al.correo} (${al.seccion || ''})</option>`
-    ).join('');
     return `
       <div class="form-group">
         <label><span class="badge-rol rol-${r}" style="font-size:10px;padding:2px 6px">${r}</span> Estudiante Asignado:</label>
-        <select id="asigRol_${r}" class="select select-full">${opciones}</select>
+        <input type="search" id="asigBuscar_${r}" class="input-full" placeholder="🔍 Escribe nombre o apellido para filtrar alumnos..." autocomplete="off">
+        <select id="asigRol_${r}" class="select select-full" style="margin-top:6px">
+          <option value="">Escribe un nombre o apellido para buscar</option>
+        </select>
       </div>`;
   }).join('');
 
@@ -1539,7 +1653,20 @@ function abrirModalCrearEquipo() {
       '4° Secundaria': 'Tech Startup Escalable'
     };
     $('#asigProyectoEq').value = mapaProyectos[g] || 'Proyecto Digital';
+    roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
   };
+  $('#asigSeccionEq').oninput = () => roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
+  roles.forEach(rol => {
+    $(`#asigBuscar_${rol}`).oninput = () => actualizarOpcionesAlumnoNuevoEquipo(rol);
+    $(`#asigRol_${rol}`).onchange = () => {
+      roles.filter(otroRol => otroRol !== rol).forEach(otroRol => {
+        const otroSelect = $(`#asigRol_${otroRol}`);
+        if (otroSelect.value && otroSelect.value === $(`#asigRol_${rol}`).value) otroSelect.value = '';
+      });
+      roles.filter(otroRol => otroRol !== rol).forEach(actualizarOpcionesAlumnoNuevoEquipo);
+    };
+  });
+  roles.forEach(actualizarOpcionesAlumnoNuevoEquipo);
 
   $('#btnGuardarAsignarEq').onclick = async () => {
     const idGenerado = $('#asigIdEq').value.trim() || ('EQ-' + Date.now().toString().slice(-6));
@@ -1845,197 +1972,195 @@ function renderReporteImprimible() {
    6. SORTEO Y TURNOS DE EXPOSICIÓN / ENTREGAS
    ========================================================= */
 async function inicializarSorteo() {
-  if (!state.equipos.length || !state.alumnos.length) {
-    try {
-      const [eqData, alData] = await Promise.all([
-        apiGet('listar', { hoja: 'Equipos' }).catch(() => ({ equipos: [] })),
-        apiGet('listar', { hoja: 'Alumnos' }).catch(() => ({ alumnos: [] }))
-      ]);
-      if (eqData.equipos) state.equipos = eqData.equipos;
-      if (alData.alumnos) state.alumnos = alData.alumnos;
-    } catch (e) {
-      console.warn('Error cargando datos para sorteo:', e);
+  const loader = $('#sorteoLoader');
+  const selectGrado = $('#sorteoGrado');
+  const selectSeccion = $('#sorteoSeccion');
+  const botonSortear = $('#btnLanzarSorteo');
+  if (loader) loader.style.display = 'flex';
+  if (botonSortear) botonSortear.disabled = true;
+
+  try {
+    if (!state.equipos.length || !state.alumnos.length) {
+      const login = await apiGet('login', { correo: state.sesion.correo });
+      state.equipos = login.equipos || [];
+      state.alumnos = login.alumnos || [];
     }
-  }
 
-  // Secciones disponibles
-  const secsEquipos = state.equipos.map(e => e.seccion).filter(Boolean);
-  const secsAlumnos = state.alumnos.map(a => a.seccion).filter(Boolean);
-  const secs = [...new Set([...secsEquipos, ...secsAlumnos])].sort();
+    const grados = [...new Set([
+      ...state.equipos.map(e => String(e.grado || '').trim()),
+      ...state.alumnos.map(a => String(a.grado || '').trim())
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    selectGrado.innerHTML = '<option value="">-- Seleccionar Grado --</option>' +
+      grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+    selectSeccion.innerHTML = '<option value="">-- Primero elija Grado --</option>';
+    selectSeccion.disabled = true;
 
-  const selSec = $('#sorteoSeccion');
-  if (selSec) {
-    const valActual = selSec.value;
-    selSec.innerHTML = '<option value="">-- Todas las Secciones --</option>' +
-      secs.map(s => `<option value="${s}">Sección ${s}</option>`).join('');
+    selectGrado.onchange = () => {
+      reiniciarSorteo(false);
+      const grado = selectGrado.value;
+      const equiposGrado = state.equipos.filter(e => normalizarGrado(e.grado) === normalizarGrado(grado));
+      const idsEquipos = new Set(equiposGrado.map(e => String(e.equipo_id)));
+      const secciones = [...new Set([
+        ...equiposGrado.map(e => String(e.seccion || '').trim()),
+        ...state.alumnos
+          .filter(a => normalizarGrado(a.grado) === normalizarGrado(grado) ||
+            (!a.grado && idsEquipos.has(String(a.equipo_id))))
+          .map(a => String(a.seccion || '').trim())
+      ].filter(Boolean))].sort();
+      selectSeccion.innerHTML = '<option value="">-- Seleccionar Sección --</option>' +
+        secciones.map(seccion => `<option value="${escaparHtml(seccion)}">Sección ${escaparHtml(seccion)}</option>`).join('');
+      selectSeccion.disabled = !grado || !secciones.length;
+      botonSortear.disabled = true;
+    };
 
-    if (valActual && secs.includes(valActual)) {
-      selSec.value = valActual;
-    } else if (state.sesion?.tipo === 'alumno' && state.sesion.alumno?.seccion) {
-      selSec.value = state.sesion.alumno.seccion;
-    } else if (secs.length > 0) {
-      selSec.value = secs[0];
-    }
-  }
+    selectSeccion.onchange = () => {
+      reiniciarSorteo(false);
+      botonSortear.disabled = !(selectGrado.value && selectSeccion.value);
+    };
+    botonSortear.onclick = ejecutarSorteo;
+    $('#btnReiniciarSorteo').onclick = reiniciarSorteo;
+    $('#btnImprimirSorteo').onclick = () => window.print();
+    $('#btnCronoPlay').onclick = iniciarCronometroPitch;
+    $('#btnCronoPause').onclick = pausarCronometroPitch;
+    $('#btnCronoNext').onclick = siguienteTurnoPitch;
+    $('#btnCronoReset').onclick = reiniciarRelojPitch;
 
-  // Handlers principales
-  const btnLanzar = $('#btnLanzarSorteo');
-  if (btnLanzar) btnLanzar.onclick = ejecutarSorteo;
-
-  const btnReiniciar = $('#btnReiniciarSorteo');
-  if (btnReiniciar) btnReiniciar.onclick = reiniciarSorteo;
-
-  const btnImprimir = $('#btnImprimirSorteo');
-  if (btnImprimir) btnImprimir.onclick = () => window.print();
-
-  // Handlers del cronómetro
-  const btnPlay = $('#btnCronoPlay');
-  if (btnPlay) btnPlay.onclick = iniciarCronometroPitch;
-
-  const btnPause = $('#btnCronoPause');
-  if (btnPause) btnPause.onclick = pausarCronometroPitch;
-
-  const btnNext = $('#btnCronoNext');
-  if (btnNext) btnNext.onclick = siguienteTurnoPitch;
-
-  const btnReset = $('#btnCronoReset');
-  if (btnReset) btnReset.onclick = reiniciarRelojPitch;
-
-  if (state.sorteo?.resultados?.length) {
-    renderResultadosSorteo();
+    if (state.sorteo?.resultados?.length) renderResultadosSorteo();
+  } catch (e) {
+    toast('❌ No se pudieron cargar los datos para el sorteo: ' + e.message);
+    selectGrado.innerHTML = '<option value="">Error al cargar grados</option>';
+    selectGrado.disabled = true;
+    selectSeccion.disabled = true;
+  } finally {
+    if (loader) loader.style.display = 'none';
   }
 }
 
 async function ejecutarSorteo() {
-  const tipo = $('#sorteoTipo').value; // 'grupos', 'alumnos', 'voceros'
+  const tipo = $('#sorteoTipo').value;
+  const grado = $('#sorteoGrado').value;
   const seccion = $('#sorteoSeccion').value;
   const tiempoMin = parseInt($('#sorteoTiempo').value, 10) || 5;
 
+  if (!grado) { toast('⚠️ Selecciona un grado'); return; }
+  if (!seccion) { toast('⚠️ Selecciona una sección'); return; }
   if (!state.equipos.length && !state.alumnos.length) {
     toast('⚠️ No hay equipos ni alumnos cargados aún');
     return;
   }
 
-  // Mostrar animación de sorteo
+  const botonSortear = $('#btnLanzarSorteo');
+  const loader = $('#sorteoLoader');
   const animBox = $('#cajaAnimacionSorteo');
   const txtAnim = $('#textoAnimacionSorteo');
-  if (animBox) {
-    animBox.style.display = 'block';
-    txtAnim.textContent = tipo === 'grupos' 
-      ? '🎲 ¡Sorteando orden de exposición de los equipos...!'
-      : tipo === 'voceros'
-      ? '🎤 ¡Sorteando voceros representantes de cada equipo...!'
-      : '👤 ¡Sorteando secuencia individual de alumnos...!';
-  }
+  botonSortear.disabled = true;
+  loader.style.display = 'flex';
+  $('#sorteoLoaderTexto').textContent = 'Preparando el sorteo…';
+  txtAnim.textContent = tipo === 'representante_seccion'
+    ? '🎤 ¡Eligiendo al representante de la sección…!'
+    : tipo === 'representantes_equipos'
+      ? '🎤 ¡Eligiendo un representante por equipo…!'
+      : tipo === 'grupos'
+        ? '🎲 ¡Sorteando el orden de los equipos…!'
+        : '👤 ¡Sorteando el orden de los alumnos…!';
+  animBox.style.display = 'block';
 
-  // Construir pool según la opción elegida
-  let pool = [];
-
-  if (tipo === 'grupos') {
-    let eqs = [...state.equipos];
-    if (seccion) eqs = eqs.filter(e => String(e.seccion).trim() === String(seccion).trim());
-    if (!eqs.length) {
-      if (animBox) animBox.style.display = 'none';
-      toast(`⚠️ No se encontraron equipos en la sección seleccionada`);
-      return;
-    }
-    pool = eqs.map(e => ({
-      tipo: 'equipo',
-      id: e.equipo_id,
-      nombre: e.nombre_equipo || e.nombre || `Equipo ${e.equipo_id}`,
-      seccion: e.seccion || '—',
-      grado: e.grado || '—',
-      proyecto: e.proyecto || 'Proyecto Digital',
-      trello: e.trello_url || '',
-      estado: 'Pendiente'
-    }));
-  } else if (tipo === 'alumnos') {
-    let als = [...state.alumnos];
-    if (seccion) als = als.filter(a => String(a.seccion).trim() === String(seccion).trim());
-    if (!als.length) {
-      if (animBox) animBox.style.display = 'none';
-      toast(`⚠️ No se encontraron alumnos en la sección seleccionada`);
-      return;
-    }
-    pool = als.map(a => {
-      const eq = state.equipos.find(e => String(e.equipo_id) === String(a.equipo_id));
-      const nom = a.nombre || [a.nombres, a.apellidos].filter(Boolean).join(' ') || a.correo;
+  try {
+    const esGradoSeccion = registro =>
+      normalizarGrado(registro.grado) === normalizarGrado(grado) &&
+      String(registro.seccion || '').trim() === String(seccion).trim();
+    const equipos = state.equipos.filter(esGradoSeccion);
+    const idsEquipos = new Set(equipos.map(e => String(e.equipo_id)));
+    const alumnos = state.alumnos.filter(a =>
+      esGradoSeccion(a) || idsEquipos.has(String(a.equipo_id))
+    );
+    const mapearAlumno = (alumno, tipoResultado = 'alumno') => {
+      const equipo = state.equipos.find(e => String(e.equipo_id) === String(alumno.equipo_id));
+      const nombre = alumno.nombre || [alumno.nombres, alumno.apellidos].filter(Boolean).join(' ') || alumno.correo;
       return {
-        tipo: 'alumno',
-        id: a.alumno_id || a.id,
-        nombre: nom,
-        seccion: a.seccion || '—',
-        grado: a.grado || '—',
-        proyecto: `Rol: ${a.rol || 'Miembro'} · Equipo: ${eq?.nombre_equipo || a.equipo || 'Sin equipo'}`,
-        rol: a.rol || 'CEO',
+        tipo: tipoResultado,
+        id: alumno.alumno_id || alumno.id || alumno.correo,
+        nombre,
+        seccion: alumno.seccion || seccion,
+        grado: alumno.grado || grado,
+        proyecto: `Rol: ${alumno.rol || 'Miembro'} · Equipo: ${equipo?.nombre_equipo || alumno.equipo || 'Sin equipo'}`,
+        rol: alumno.rol || '—',
         estado: 'Pendiente'
       };
-    });
-  } else if (tipo === 'voceros') {
-    let eqs = [...state.equipos];
-    if (seccion) eqs = eqs.filter(e => String(e.seccion).trim() === String(seccion).trim());
-    if (!eqs.length) {
-      if (animBox) animBox.style.display = 'none';
-      toast(`⚠️ No se encontraron equipos en la sección seleccionada`);
-      return;
-    }
-    pool = eqs.map(e => {
-      const miembros = state.alumnos.filter(a => String(a.equipo_id) === String(e.equipo_id));
-      let vocero = null;
-      if (miembros.length > 0) {
-        vocero = miembros[Math.floor(Math.random() * miembros.length)];
+    };
+
+    let pool = [];
+    if (tipo === 'representante_seccion') {
+      if (alumnos.length) {
+        const elegido = alumnos[Math.floor(Math.random() * alumnos.length)];
+        pool = [mapearAlumno(elegido, 'representante')];
+        pool[0].proyecto = `Representante elegido para ${grado} · Sección ${seccion}`;
       }
-      const nomVocero = vocero ? (vocero.nombre || [vocero.nombres, vocero.apellidos].filter(Boolean).join(' ') || vocero.correo) : 'Sin miembros';
-      const rolVocero = vocero ? vocero.rol : '—';
-      return {
-        tipo: 'vocero',
+    } else if (tipo === 'alumnos') {
+      pool = alumnos.map(a => mapearAlumno(a));
+    } else if (tipo === 'representantes_equipos') {
+      pool = equipos.flatMap(e => {
+        const integrantes = alumnos.filter(a => String(a.equipo_id) === String(e.equipo_id));
+        if (!integrantes.length) return [];
+        const elegido = integrantes[Math.floor(Math.random() * integrantes.length)];
+        const resultado = mapearAlumno(elegido, 'vocero');
+        resultado.id = e.equipo_id;
+        resultado.proyecto = `Representante de: ${e.nombre_equipo || 'Equipo'} · ${e.proyecto || ''}`;
+        return [resultado];
+      });
+    } else if (tipo === 'grupos') {
+      pool = equipos.map(e => ({
+        tipo: 'equipo',
         id: e.equipo_id,
-        nombre: `${nomVocero} (${rolVocero})`,
-        seccion: e.seccion || '—',
-        grado: e.grado || '—',
-        proyecto: `Representante de: ${e.nombre_equipo || 'Equipo'} · ${e.proyecto || ''}`,
+        nombre: e.nombre_equipo || e.nombre || `Equipo ${e.equipo_id}`,
+        seccion: e.seccion || seccion,
+        grado: e.grado || grado,
+        proyecto: e.proyecto || 'Proyecto Digital',
+        trello: e.trello_url || '',
         estado: 'Pendiente'
-      };
+      }));
+    }
+
+    if (!pool.length) {
+      toast('⚠️ No hay alumnos o equipos disponibles para el sorteo elegido.');
+      return;
+    }
+
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    const ahora = new Date();
+    pool.forEach((item, idx) => {
+      item.turno = idx + 1;
+      const horaTurno = new Date(ahora.getTime() + idx * tiempoMin * 60000);
+      item.horaEstimada = horaTurno.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
     });
-  }
 
-  // Algoritmo de barajado imparcial Fisher-Yates
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-
-  // Asignar turnos y cálculo de hora estimada
-  const ahora = new Date();
-  pool.forEach((item, idx) => {
-    item.turno = idx + 1;
-    const horaTurno = new Date(ahora.getTime() + idx * tiempoMin * 60000);
-    item.horaEstimada = horaTurno.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-  });
-
-  // Guardar en el estado
-  state.sorteo = {
-    tipo,
-    seccion,
-    tiempoPorTurnoMin: tiempoMin,
-    segundosRestantes: tiempoMin * 60,
-    indiceActual: 0,
-    intervalo: null,
-    corriendo: false,
-    resultados: pool
-  };
-
-  if (pool.length > 0) {
+    state.sorteo = {
+      tipo,
+      grado,
+      seccion,
+      tiempoPorTurnoMin: tiempoMin,
+      segundosRestantes: tiempoMin * 60,
+      indiceActual: 0,
+      intervalo: null,
+      corriendo: false,
+      resultados: pool
+    };
     pool[0].estado = 'En Exposición';
-  }
-
-  // Simular emoción visual de ruleta
-  setTimeout(() => {
-    if (animBox) animBox.style.display = 'none';
+    await new Promise(resolve => setTimeout(resolve, 900));
     renderResultadosSorteo();
     configurarCronometroParaTurno(0);
-    toast(`🎉 ¡Sorteo completado! Se generaron ${pool.length} turnos.`);
-  }, 900);
+    toast(`🎉 Sorteo completado: ${pool.length} ${tipo === 'grupos' ? 'equipos' : 'participantes'}.`);
+  } catch (e) {
+    toast('❌ No se pudo completar el sorteo: ' + e.message);
+  } finally {
+    animBox.style.display = 'none';
+    loader.style.display = 'none';
+    botonSortear.disabled = false;
+  }
 }
 
 function renderResultadosSorteo() {
@@ -2195,12 +2320,12 @@ function reiniciarRelojPitch() {
   actualizarDisplayCronometro();
 }
 
-function reiniciarSorteo() {
+function reiniciarSorteo(mostrarAviso = true) {
   pausarCronometroPitch();
   state.sorteo.resultados = [];
   state.sorteo.indiceActual = 0;
   renderResultadosSorteo();
-  toast('🔄 Sorteo reiniciado');
+  if (mostrarAviso) toast('🔄 Sorteo reiniciado');
 }
 
 function sonarAlarmaPitch() {
@@ -2349,23 +2474,97 @@ async function cargarMisNotasAlumno() {
 /* =========================================================
    8. RANKINGS (EQUIPOS E INDIVIDUAL)
    ========================================================= */
+function actualizarFiltrosRanking(tipo, datos) {
+  if (state.sesion?.tipo !== 'docente') return { grado: '', seccion: '', equipo: '' };
+
+  const prefijo = tipo === 'equipos' ? 'rankingEquipos' : 'rankingIndividual';
+  const contenedor = $(`#filtrosRanking${tipo === 'equipos' ? 'Equipos' : 'Individual'}`);
+  const gradoSelect = $(`#${prefijo}Grado`);
+  const seccionSelect = $(`#${prefijo}Seccion`);
+  const equipoSelect = $(`#${prefijo}Equipo`);
+  if (!contenedor || !gradoSelect || !seccionSelect || !equipoSelect) return { grado: '', seccion: '', equipo: '' };
+  contenedor.style.display = 'flex';
+
+  const gradoPrevio = gradoSelect.value;
+  const seccionPrevia = seccionSelect.value;
+  const equipoPrevio = equipoSelect.value;
+  const grados = [...new Set(datos.map(d => String(d.grado || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  gradoSelect.innerHTML = '<option value="">Todos los grados</option>' +
+    grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+  gradoSelect.value = grados.includes(gradoPrevio) ? gradoPrevio : '';
+
+  const filasGrado = gradoSelect.value
+    ? datos.filter(d => normalizarGrado(d.grado) === normalizarGrado(gradoSelect.value))
+    : datos;
+  const secciones = [...new Set(filasGrado.map(d => String(d.seccion || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  seccionSelect.innerHTML = '<option value="">Todas las secciones</option>' +
+    secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+  seccionSelect.value = secciones.includes(seccionPrevia) ? seccionPrevia : '';
+
+  const filasSeccion = seccionSelect.value
+    ? filasGrado.filter(d => String(d.seccion || '').trim() === seccionSelect.value)
+    : filasGrado;
+  const equipos = tipo === 'equipos'
+    ? filasSeccion.map(d => ({ id: d.equipo_id, nombre: d.nombre }))
+    : [...new Map(filasSeccion
+      .filter(d => d.equipo_id)
+      .map(d => {
+        const equipo = state.equipos.find(e => String(e.equipo_id) === String(d.equipo_id));
+        return [String(d.equipo_id), {
+          id: d.equipo_id,
+          nombre: equipo?.nombre_equipo || d.equipo_id
+        }];
+      })).values()];
+  equipoSelect.innerHTML = '<option value="">Todos los equipos</option>' +
+    equipos.map(equipo => `<option value="${escaparHtml(equipo.id)}">${escaparHtml(equipo.nombre || equipo.id)}</option>`).join('');
+  equipoSelect.value = equipos.some(equipo => String(equipo.id) === equipoPrevio) ? equipoPrevio : '';
+
+  const filtrar = () => {
+    actualizarFiltrosRanking(tipo, datos);
+    if (tipo === 'equipos') renderRanking();
+    else renderRankingIndividual();
+  };
+  gradoSelect.onchange = filtrar;
+  seccionSelect.onchange = filtrar;
+  equipoSelect.onchange = filtrar;
+
+  return { grado: gradoSelect.value, seccion: seccionSelect.value, equipo: equipoSelect.value };
+}
+
+function filtrarDatosRanking(datos, filtros) {
+  return datos.filter(d =>
+    (!filtros.grado || normalizarGrado(d.grado) === normalizarGrado(filtros.grado)) &&
+    (!filtros.seccion || String(d.seccion || '').trim() === filtros.seccion) &&
+    (!filtros.equipo || String(d.equipo_id || '') === filtros.equipo)
+  );
+}
+
 function renderRanking() {
   const tbody = $('#tablaRanking tbody');
+  const filtros = actualizarFiltrosRanking('equipos', state.ranking);
+  const ranking = state.sesion?.tipo === 'docente'
+    ? filtrarDatosRanking(state.ranking, filtros)
+    : state.ranking;
   const filtroSec = state.sesion?.tipo === 'alumno'
     ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-    : $('#filtroSeccion').value;
-  $('#badgeFiltroSeccion').textContent = filtroSec ? `Sección ${filtroSec}` : 'Todas las Secciones';
+    : filtros.seccion;
+  $('#badgeFiltroSeccion').textContent = filtros.grado
+    ? `${filtros.grado}${filtroSec ? ` · Sección ${filtroSec}` : ''}`
+    : filtroSec ? `Sección ${filtroSec}` : 'Todas las Secciones';
 
-  if (!state.ranking.length) {
+  if (!ranking.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px">No hay calificaciones registradas</td></tr>';
     return;
   }
 
   const miEquipoId = state.sesion?.tipo === 'alumno' ? state.sesion.alumno?.equipo_id : null;
 
-  tbody.innerHTML = state.ranking.map(r => {
-    const medalla = r.posicion === 1 ? '🥇' : r.posicion === 2 ? '🥈' : r.posicion === 3 ? '🥉' : r.posicion;
-    const clase = r.posicion <= 3 ? `rank-${r.posicion}` : '';
+  tbody.innerHTML = ranking.map((r, index) => {
+    const posicion = index + 1;
+    const medalla = posicion === 1 ? '🥇' : posicion === 2 ? '🥈' : posicion === 3 ? '🥉' : posicion;
+    const clase = posicion <= 3 ? `rank-${posicion}` : '';
     const esMio = miEquipoId && String(r.equipo_id) === String(miEquipoId);
     const trello = r.trello_url
       ? `<a href="${r.trello_url}" target="_blank" rel="noopener" class="btn-trello" style="padding:2px 8px;font-size:11px">🔗 Ver</a>`
@@ -2389,16 +2588,21 @@ function renderRanking() {
 
 function renderRankingIndividual() {
   const tbody = $('#tablaRankingIndividual tbody');
-  if (!state.rankingIndividual.length) {
+  const filtros = actualizarFiltrosRanking('individual', state.rankingIndividual);
+  const ranking = state.sesion?.tipo === 'docente'
+    ? filtrarDatosRanking(state.rankingIndividual, filtros)
+    : state.rankingIndividual;
+  if (!ranking.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px">Sin evaluaciones individuales registradas</td></tr>';
     return;
   }
 
   const miCorreo = state.sesion?.tipo === 'alumno' ? state.sesion.correo : null;
 
-  tbody.innerHTML = state.rankingIndividual.map(r => {
-    const medalla = r.posicion === 1 ? '🥇' : r.posicion === 2 ? '🥈' : r.posicion === 3 ? '🥉' : r.posicion;
-    const clase = r.posicion <= 3 ? `rank-${r.posicion}` : '';
+  tbody.innerHTML = ranking.map((r, index) => {
+    const posicion = index + 1;
+    const medalla = posicion === 1 ? '🥇' : posicion === 2 ? '🥈' : posicion === 3 ? '🥉' : posicion;
+    const clase = posicion <= 3 ? `rank-${posicion}` : '';
     const esMio = miCorreo && String(r.correo).toLowerCase() === String(miCorreo).toLowerCase();
 
     return `
@@ -2415,6 +2619,58 @@ function renderRankingIndividual() {
         <td style="text-align:center"><b>${r.porcentaje}%</b></td>
       </tr>`;
   }).join('');
+}
+
+function actualizarOpcionesAlumnoNuevoEquipo(rol) {
+  const input = $(`#asigBuscar_${rol}`);
+  const select = $(`#asigRol_${rol}`);
+  if (!input || !select) return;
+
+  const normalizarBusqueda = valor => String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  const busqueda = normalizarBusqueda(input.value);
+  const grado = normalizarGrado($('#asigGradoEq').value);
+  const seccion = normalizarBusqueda($('#asigSeccionEq').value);
+  const seleccionadoActual = select.value;
+  const seleccionadosOtrosRoles = new Set(['CEO', 'CTO', 'CMO', 'CFO']
+    .filter(otroRol => otroRol !== rol)
+    .map(otroRol => $(`#asigRol_${otroRol}`)?.value)
+    .filter(Boolean));
+
+  const candidatos = state.alumnos.filter(alumno => {
+    if (alumno.equipo_id || seleccionadosOtrosRoles.has(alumno.correo)) return false;
+    const nombre = alumno.nombre || [alumno.nombres, alumno.apellidos].filter(Boolean).join(' ');
+    const gradoAlumno = normalizarGrado(alumno.grado);
+    const seccionAlumno = normalizarBusqueda(alumno.seccion);
+    const texto = normalizarBusqueda([nombre, alumno.correo, alumno.dni].filter(Boolean).join(' '));
+    if (grado && gradoAlumno !== grado) return false;
+    if (seccion && seccionAlumno !== seccion) return false;
+    return !busqueda || texto.includes(busqueda);
+  });
+
+  const opciones = candidatos.map(alumno => {
+    const nombre = alumno.nombre || [alumno.nombres, alumno.apellidos].filter(Boolean).join(' ') || alumno.correo;
+    return `<option value="${escaparHtml(alumno.correo)}">${escaparHtml(nombre)} · ${escaparHtml(alumno.grado || '')} ${escaparHtml(alumno.seccion || '')}</option>`;
+  });
+  if (!busqueda && !seleccionadoActual) {
+    opciones.unshift('<option value="">Escribe un nombre o apellido para buscar</option>');
+  } else {
+    opciones.unshift('<option value="">-- Sin asignar --</option>');
+  }
+  if (seleccionadoActual && !candidatos.some(alumno => alumno.correo === seleccionadoActual)) {
+    const actual = state.alumnos.find(alumno => alumno.correo === seleccionadoActual);
+    if (actual) {
+      const nombre = actual.nombre || [actual.nombres, actual.apellidos].filter(Boolean).join(' ') || actual.correo;
+      opciones.push(`<option value="${escaparHtml(actual.correo)}">${escaparHtml(nombre)}</option>`);
+    }
+  }
+  select.innerHTML = opciones.join('');
+  select.value = seleccionadoActual && [...select.options].some(option => option.value === seleccionadoActual)
+    ? seleccionadoActual
+    : '';
 }
 
 /* =========================================================
@@ -2769,6 +3025,13 @@ async function init() {
         state.evidencias = Array.isArray(login.evidencias) ? login.evidencias : [];
         state.puntosExtra = Array.isArray(login.puntos_extra) ? login.puntos_extra : [];
         localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
+      } else if (login.tipo === 'docente') {
+        state.equipos = login.equipos || [];
+        state.alumnos = login.alumnos || [];
+        state.rubricaGrupal = login.rubrica || [];
+        state.rubricaIndividual = login.rubrica_individual || [];
+        state.evidencias = login.evidencias || [];
+        state.plan = login.plan || [];
       }
     } catch (e) {
       if (!invalidarSesionPorToken(e.message)) {
