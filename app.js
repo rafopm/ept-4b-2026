@@ -1101,6 +1101,13 @@ function renderPanelCalificacionAgil() {
 
             ${evHTML}
 
+            <div class="acciones-incumplimiento">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="aplicarNotaCeroIndividual(this)">
+                ⛔ No cumplió: asignar 0
+              </button>
+              <small>Aplica 0 a todos los criterios individuales. Verifica el trabajo antes de marcarlo.</small>
+            </div>
+
             <!-- Tabla Criterios Individuales -->
             <table class="tabla" style="font-size:12px;margin:8px 0">
               <thead>
@@ -1150,6 +1157,18 @@ function autoLlenarMaximos() {
   $$('.input-puntaje-g').forEach(inp => inp.value = inp.max || 5);
   $$('.input-puntaje-ind').forEach(inp => inp.value = inp.max || 5);
   toast('⭐ Todas las notas se establecieron en su valor máximo');
+}
+
+function aplicarNotaCeroIndividual(button) {
+  const card = button.closest('.alumno-eval-card');
+  if (!card) return;
+
+  const nombre = card.querySelector('.alumno-nombre-tit')?.textContent || 'este alumno';
+  if (!confirm(`¿Confirmas asignar 0 en todos los criterios individuales a ${nombre} por no cumplir la tarea?`)) return;
+
+  const puntajes = card.querySelectorAll('.input-puntaje-ind');
+  puntajes.forEach(input => { input.value = '0'; });
+  toast(`✅ Nota 0 aplicada a ${nombre}. Guarda las calificaciones para registrarla.`);
 }
 
 async function guardarCalificacionAgilCompleta() {
