@@ -1179,6 +1179,8 @@ function renderPanelCalificacionAgil() {
              ⚠️ Sin evidencia digital registrada por el alumno. Revisar directamente en su PC.
            </div>`;
 
+      const comentarioPrevio = escaparHtml(prevInd?.comentario || '');
+
       return `
         <div class="alumno-eval-card" data-correo="${escaparHtml(al.correo)}" data-equipo-id="${escaparHtml(al.equipo_id || '')}">
           <div>
@@ -1205,6 +1207,30 @@ function renderPanelCalificacionAgil() {
                 ⛔ No cumplió: asignar 0
               </button>
               <small>Aplica 0 a todos los criterios individuales. Verifica el trabajo antes de marcarlo.</small>
+            </div>
+
+            <div class="retroalimentacion-rapida">
+              <label class="lbl-campo" for="mensajeFeedback_${al.correo.replace(/[^a-zA-Z0-9]/g, '_')}">💬 Mensaje breve para el estudiante</label>
+              <select id="mensajeFeedback_${al.correo.replace(/[^a-zA-Z0-9]/g, '_')}" class="select select-feedback-ind" onchange="aplicarMensajeRetroalimentacion(this)">
+                <option value="">Elegir una sugerencia (puedes editarla)</option>
+                <optgroup label="Para mejorar">
+                  <option value="No se registró la entrega de esta tarea. Para la próxima, organiza tu tiempo y pide apoyo si algo te impide avanzar.">No presentó la tarea</option>
+                  <option value="El trabajo presentado está incompleto y requiere más dedicación. Puedes mejorar siguiendo los pasos y revisando los criterios de la actividad.">Trabajo incompleto o con poco desarrollo</option>
+                  <option value="Durante la actividad fue necesario retomar la atención en la tarea. Sé que puedes enfocarte y aportar más en la siguiente sesión.">Se distrajo durante la actividad</option>
+                  <option value="Necesitas participar y aportar de manera más constante al trabajo. Puedes hacerlo; empieza proponiéndote una tarea concreta para la próxima sesión.">Participación o esfuerzo insuficiente</option>
+                  <option value="La evidencia no permite verificar todo lo solicitado. Completa los pasos pendientes y muestra tu proceso para que podamos reconocer tu avance.">Evidencia insuficiente</option>
+                  <option value="Aún necesitas entregar dentro del plazo acordado. Organizar las etapas del trabajo te ayudará a terminar a tiempo.">Entrega fuera del plazo</option>
+                </optgroup>
+                <optgroup label="Ánimo y reconocimiento">
+                  <option value="Vas progresando. Mantén el esfuerzo y sigue practicando: eres capaz de alcanzar el objetivo.">Ánimo para seguir avanzando</option>
+                  <option value="Se nota tu esfuerzo y perseverancia. Sigue así; cada paso que das fortalece tu aprendizaje.">Reconocer esfuerzo y perseverancia</option>
+                  <option value="Tu participación aportó al equipo. Confía en tus ideas y continúa compartiéndolas.">Reconocer participación</option>
+                  <option value="Se observa una mejora respecto al trabajo anterior. Sigue practicando; estás avanzando y puedes lograrlo.">Reconocer progreso</option>
+                  <option value="Buen trabajo: cumpliste con lo esperado y puedes seguir creciendo. El siguiente paso es profundizar y probar nuevas ideas.">Reconocer cumplimiento</option>
+                </optgroup>
+              </select>
+              <textarea class="input-full input-feedback-ind" rows="2" maxlength="500" placeholder="Elige una sugerencia o escribe un mensaje breve, respetuoso y específico.">${comentarioPrevio}</textarea>
+              <small>Personaliza el mensaje según lo observado. La calificación debe describir el trabajo, no etiquetar a la persona.</small>
             </div>
 
             <!-- Tabla Criterios Individuales -->
@@ -1262,6 +1288,11 @@ function autoLlenarMaximos() {
   toast('⭐ Todas las notas se establecieron en su valor máximo');
 }
 
+function aplicarMensajeRetroalimentacion(select) {
+  const campo = select.closest('.retroalimentacion-rapida')?.querySelector('.input-feedback-ind');
+  if (campo && select.value) campo.value = select.value;
+}
+
 function aplicarNotaCeroIndividual(button) {
   const card = button.closest('.alumno-eval-card');
   if (!card) return;
@@ -1299,12 +1330,14 @@ async function guardarCalificacionAgilCompleta() {
       puntaje: Number(tr.querySelector('.input-puntaje-ind').value) || 0
     }));
     const obsInd = card.querySelector('.input-obs-ind').value.trim();
+    const comentario = card.querySelector('.input-feedback-ind').value.trim();
     const asumioBackup = card.querySelector('.check-backup-bonus').checked;
 
     return {
       correo_alumno: correo,
       equipo_id: card.dataset.equipoId,
       criterios,
+      comentario,
       observacion_pc: obsInd,
       bonus_backup: asumioBackup ? { puntos: 10, motivo: `Asumió Rol Backup en Semana ${semana}` } : null
     };
@@ -1329,6 +1362,7 @@ async function guardarCalificacionAgilCompleta() {
           equipo_id: ind.equipo_id,
           correo_alumno: ind.correo_alumno,
           criterios: ind.criterios,
+          comentario: ind.comentario,
           observacion_pc: ind.observacion_pc
         });
         if (ind.bonus_backup) {
@@ -1371,6 +1405,7 @@ async function guardarCalificacionAgilCompleta() {
             equipo_id: ind.equipo_id,
             correo_alumno: ind.correo_alumno,
             criterios: ind.criterios,
+            comentario: ind.comentario,
             observacion_pc: ind.observacion_pc
           });
 
@@ -3031,7 +3066,11 @@ async function cargarMisNotasAlumno() {
         const total = Number(s.total) || 0;
         const max = Number(s.max) || 0;
         const porcentaje = max ? Math.min(100, Math.round(total / max * 100)) : 0;
-        const comentarios = detalle.filter(criterio => String(criterio.comentario || '').trim());
+        const comentarioGeneral = String(s.comentario_general || '').trim();
+        const comentarios = detalle.filter(criterio => {
+          const comentario = String(criterio.comentario || '').trim();
+          return comentario && comentario !== comentarioGeneral;
+        });
         const estado = s.calificado ? 'Calificada' : 'Pendiente';
         const detalleCriterios = detalle.length
           ? `<ul class="calificacion-criterios">${detalle.map(criterio => {
@@ -3050,9 +3089,10 @@ async function cargarMisNotasAlumno() {
             </li>`;
           }).join('')}</ul>`
           : '<p class="hint">No hay desglose por criterios disponible para esta semana.</p>';
-        const retroalimentacion = s.observacion_pc || comentarios.length
+        const retroalimentacion = s.observacion_pc || comentarioGeneral || comentarios.length
           ? `<aside class="retroalimentacion-calificacion">
               <h4>💬 Retroalimentación del docente</h4>
+              ${comentarioGeneral ? `<p>${escaparHtml(comentarioGeneral)}</p>` : ''}
               ${s.observacion_pc ? `<p>${escaparHtml(s.observacion_pc)}</p>` : ''}
               ${comentarios.length ? `<p>También hay comentarios en ${comentarios.length === 1 ? 'un criterio' : `${comentarios.length} criterios`} del desglose.</p>` : ''}
             </aside>`
