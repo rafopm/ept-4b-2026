@@ -1443,13 +1443,38 @@ async function cargarGestion() {
   }
 
   try {
+    const boton = $('#btnRecargarSolicitudesEquipo');
+    if (boton && !boton._iniciado) {
+      boton._iniciado = true;
+      boton.onclick = cargarSolicitudesCambioEquipo;
+    }
+    await cargarSolicitudesCambioEquipo();
+  } catch (e) {
+    toast('❌ No se pudo cargar la gestión: ' + e.message);
+  }
+}
+
+async function cargarSolicitudesCambioEquipo() {
+  const contador = $('#solicitudesEquipoContador');
+  const lista = $('#solicitudesEquipoLista');
+  const boton = $('#btnRecargarSolicitudesEquipo');
+  contador.textContent = 'Cargando...';
+  lista.innerHTML = '<p class="hint">Consultando solicitudes registradas...</p>';
+  if (boton) boton.disabled = true;
+
+  try {
     const data = await apiGet('solicitudes-equipo');
     state.solicitudesCambioEquipo = data.solicitudes || [];
     renderSolicitudesCambioEquipo();
   } catch (e) {
-    $('#solicitudesEquipoContador').textContent = 'No disponible';
-    $('#solicitudesEquipoLista').innerHTML =
-      `<p class="hint">No se pudieron cargar las solicitudes: ${escaparHtml(e.message)}. Verifica que code.gs esté actualizado y desplegado.</p>`;
+    state.solicitudesCambioEquipo = [];
+    contador.textContent = 'No disponible';
+    const mensaje = /acción inválida/i.test(e.message)
+      ? 'El Apps Script conectado todavía no reconoce las solicitudes de cambio. No se pueden listar solicitudes hasta actualizar y volver a implementar code.gs. Como los alumnos tampoco pueden consultar el estado, no deben enviar ni volver a intentar cambios hasta que el docente confirme la actualización.'
+      : `No se pudieron consultar las solicitudes. Verifica la conexión y vuelve a intentarlo. Detalle: ${e.message}`;
+    lista.innerHTML = `<p class="estado-solicitud-no-disponible">${escaparHtml(mensaje)}</p>`;
+  } finally {
+    if (boton) boton.disabled = false;
   }
 }
 
@@ -2537,6 +2562,7 @@ function renderMiEquipo() {
   const solicitud = state.solicitudCambioEquipo;
   const pendiente = String(solicitud?.estado || '').toLowerCase() === 'pendiente';
   const tieneEquipo = Boolean(al.equipo_id || eq.id);
+  const solicitudNoDisponible = state.solicitudCambioDisponible === false;
   const estadoSolicitud = solicitud
     ? `<div class="solicitud-estado-alumno ${pendiente ? 'pendiente' : ''}">
         <b>${pendiente ? '⏳ Solicitud pendiente de aprobación docente' : `Estado de la última solicitud: ${escaparHtml(solicitud.estado)}`}</b>
@@ -2556,16 +2582,16 @@ function renderMiEquipo() {
 
     <div class="solicitud-edicion-equipo">
       <h4>✏️ Proponer cambios al nombre o al enlace de Trello</h4>
-      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió.</p>
+      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió; las bromas o propuestas inadecuadas serán rechazadas.</p>
       ${!tieneEquipo ? '<p class="hint">Aún no tienes un equipo asignado; solicita ayuda al docente.</p>' : ''}
-      ${solicitudErrorEquipo ? `<p class="error-solicitud-equipo">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
+      ${solicitudErrorEquipo ? `<p class="estado-solicitud-no-disponible">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
       ${estadoSolicitud}
       <form id="formSolicitudCambioEquipo" class="form-solicitud-equipo">
         <label for="solicitudNombreEquipo">Nombre del equipo</label>
-        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(solicitud?.nombre_solicitado || eq.nombre || '')}" ${pendiente || !tieneEquipo ? 'disabled' : ''}>
+        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(solicitud?.nombre_solicitado || eq.nombre || '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
         <label for="solicitudTrelloEquipo">Enlace del tablero Trello</label>
-        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(solicitud?.trello_solicitado ?? eq.trello_url ?? '')}" ${pendiente || !tieneEquipo ? 'disabled' : ''}>
-        <button type="submit" class="btn btn-primary" ${pendiente || !tieneEquipo ? 'disabled' : ''}>Enviar para aprobación</button>
+        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(solicitud?.trello_solicitado ?? eq.trello_url ?? '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
+        <button type="submit" class="btn btn-primary" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>Enviar para aprobación</button>
       </form>
     </div>
 
@@ -2590,6 +2616,7 @@ let solicitudErrorEquipo = '';
 async function cargarMiEquipo() {
   solicitudErrorEquipo = '';
   state.solicitudCambioEquipo = null;
+  state.solicitudCambioDisponible = true;
   try {
     const data = await apiGet('solicitudes-equipo');
     state.solicitudCambioEquipo = data.solicitud || null;
@@ -2599,7 +2626,10 @@ async function cargarMiEquipo() {
       localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
     }
   } catch (e) {
-    solicitudErrorEquipo = `No se pudo consultar la solicitud: ${e.message}. Verifica que code.gs esté actualizado y desplegado.`;
+    state.solicitudCambioDisponible = false;
+    solicitudErrorEquipo = /acción inválida/i.test(e.message)
+      ? 'La solicitud de cambios aún no está habilitada. El profesor debe actualizar y volver a implementar Apps Script; por ahora, coordina cualquier cambio directamente con él.'
+      : 'No se pudo comprobar el estado de las solicitudes. Actualiza la página o consulta al docente antes de enviar cambios.';
   }
   renderMiEquipo();
 }
@@ -2617,8 +2647,13 @@ async function enviarSolicitudCambioEquipo(event) {
     toast('✅ Solicitud enviada. El docente debe aprobarla antes de aplicar el cambio.');
     await cargarMiEquipo();
   } catch (e) {
-    toast('❌ No se pudo enviar la solicitud: ' + e.message);
-    boton.disabled = false;
+    if (/acción inválida/i.test(e.message)) {
+      toast('La solicitud aún no está habilitada. Consulta al docente.');
+      await cargarMiEquipo();
+    } else {
+      toast('❌ No se pudo enviar la solicitud. Intenta más tarde o consulta al docente.');
+      boton.disabled = false;
+    }
   }
 }
 
