@@ -2127,7 +2127,7 @@ function inicializarReportes() {
     const seccion = $('#reporteFiltroSeccion').value;
     const equipos = state.equipos.filter(e =>
       normalizarGrado(e.grado) === normalizarGrado(grado) &&
-      String(e.seccion || '').trim() === seccion
+      normalizarBusquedaGestion(e.seccion || '') === normalizarBusquedaGestion(seccion)
     );
     $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los equipos --</option>' +
       equipos.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
@@ -2147,30 +2147,49 @@ function renderReporteImprimible() {
   const secFiltro = $('#reporteFiltroSeccion').value;
   const eqFiltro = $('#reporteFiltroEquipo').value;
   const ocultarSensibles = $('#checkOcultarDatosSensibles').checked;
+  const botonImprimir = $('#btnImprimirReporte');
+  const estadoFiltros = $('#reporteEstadoFiltros');
+  const cont = $('#reporteContenido');
 
   $('#reporteFechaEmision').textContent = 'Fecha: ' + new Date().toLocaleDateString('es-PE', {
     day: '2-digit', month: 'long', year: 'numeric'
   });
 
+  botonImprimir.disabled = !gradoFiltro || !secFiltro;
+  if (!gradoFiltro || !secFiltro) {
+    estadoFiltros.textContent = 'Selecciona un grado y una sección para generar el reporte de grupos.';
+    $('#reporteSubtitulo').textContent = 'Reporte de Equipos, Roles y Calificaciones · Bimestre 4';
+    cont.innerHTML = '';
+    return;
+  }
+
+  estadoFiltros.textContent = `Reporte listo para ${gradoFiltro} · Sección ${secFiltro}.`;
+  $('#reporteSubtitulo').textContent = `Reporte de Equipos, Roles y Calificaciones · ${gradoFiltro} · Sección ${secFiltro} · Bimestre 4`;
+
   let equipos = state.equipos;
   if (gradoFiltro) equipos = equipos.filter(e => normalizarGrado(e.grado) === normalizarGrado(gradoFiltro));
-  if (secFiltro) equipos = equipos.filter(e => String(e.seccion).trim() === String(secFiltro).trim());
+  if (secFiltro) equipos = equipos.filter(e =>
+    normalizarBusquedaGestion(e.seccion || '') === normalizarBusquedaGestion(secFiltro)
+  );
   if (eqFiltro) equipos = equipos.filter(e => String(e.equipo_id) === String(eqFiltro));
 
-  const cont = $('#reporteContenido');
   if (!equipos.length) {
-    cont.innerHTML = '<p class="hint">No hay información para los filtros seleccionados.</p>';
+    cont.innerHTML = '<p class="hint">No hay equipos registrados para el grado y sección seleccionados.</p>';
     return;
   }
 
   // Agrupar por sección
-  const secciones = [...new Set(equipos.map(e => e.seccion || 'Sin Sección'))].sort();
+  const secciones = [secFiltro];
 
   cont.innerHTML = secciones.map(sec => {
-    const eqsSec = equipos.filter(e => (e.seccion || 'Sin Sección') === sec);
+    const eqsSec = equipos.filter(e =>
+      normalizarBusquedaGestion(e.seccion || '') === normalizarBusquedaGestion(sec)
+    );
 
     const tablasEq = eqsSec.map(eq => {
-      const miembros = state.alumnos.filter(a => String(a.equipo_id) === String(eq.equipo_id));
+      const miembros = state.alumnos
+        .filter(a => String(a.equipo_id) === String(eq.equipo_id))
+        .sort((a, b) => String(a.nombre || a.correo || '').localeCompare(String(b.nombre || b.correo || ''), 'es'));
 
       const filasMiembros = miembros.map((m, idx) => {
         const correoMostrar = ocultarSensibles ? '••••••••@colegiosanmartin.edu.pe' : m.correo;
@@ -2180,42 +2199,40 @@ function renderReporteImprimible() {
           <tr>
             <td style="text-align:center">${idx + 1}</td>
             <td><b>${escaparHtml(m.nombre || [m.nombres, m.apellidos].filter(Boolean).join(' ') || m.correo)}</b></td>
-            ${!ocultarSensibles ? `<td>${escaparHtml(dniMostrar)}</td>` : ''}
-            <td><span class="badge-rol rol-${m.rol || 'CEO'}" style="font-size:10px;padding:2px 6px">${m.rol || 'CEO'}</span></td>
-            <td>${escaparHtml(correoMostrar)}</td>
+            <td><span class="badge-rol rol-${escaparHtml(m.rol || 'CEO')}" style="font-size:10px;padding:2px 6px">${escaparHtml(m.rol || 'CEO')}</span></td>
+            ${!ocultarSensibles ? `<td>${escaparHtml(dniMostrar)}</td><td>${escaparHtml(correoMostrar)}</td>` : ''}
           </tr>`;
       }).join('');
 
       return `
-        <div style="margin-bottom:20px;border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#fff">
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px">
+        <article class="reporte-equipo-card">
+          <div class="reporte-equipo-cabecera">
             <div>
-              <strong style="color:var(--azul-oscuro);font-size:14px">Equipo: ${escaparHtml(eq.nombre_equipo)}</strong>
-              <span style="color:#555;margin-left:10px">Grado: ${escaparHtml(eq.grado)} · Proyecto: ${escaparHtml(eq.proyecto || '—')}</span>
+              <strong class="reporte-equipo-nombre">${escaparHtml(eq.nombre_equipo || 'Equipo sin nombre')}</strong>
+              <span class="reporte-equipo-proyecto">${escaparHtml(eq.proyecto || 'Sin proyecto')}</span>
             </div>
-            <div><b>Trello:</b> ${escaparHtml(eq.trello_url || '—')}</div>
+            ${eq.trello_url ? `<span class="reporte-equipo-trello">Trello: ${escaparHtml(eq.trello_url)}</span>` : ''}
           </div>
-          <table class="tabla" style="font-size:11.5px">
+          <table class="tabla reporte-tabla-equipo">
             <thead>
               <tr>
-                <th style="width:5%;text-align:center">N°</th>
+                <th class="reporte-col-numero">N°</th>
                 <th>Estudiante</th>
-                ${!ocultarSensibles ? '<th style="width:15%">DNI</th>' : ''}
-                <th style="width:15%">Rol Asignado</th>
-                <th style="width:30%">Correo Institucional</th>
+                <th class="reporte-col-rol">Rol</th>
+                ${!ocultarSensibles ? '<th class="reporte-col-dni">DNI</th><th>Correo institucional</th>' : ''}
               </tr>
             </thead>
             <tbody>
-              ${filasMiembros || '<tr><td colspan="5" style="text-align:center">Sin miembros registrados</td></tr>'}
+              ${filasMiembros || `<tr><td colspan="${ocultarSensibles ? 3 : 5}" style="text-align:center">Sin miembros registrados</td></tr>`}
             </tbody>
           </table>
-        </div>`;
+        </article>`;
     }).join('');
 
     return `
       <div class="reporte-seccion-bloque">
-        <h3>📍 Sección: ${sec} (${eqsSec.length} Equipos)</h3>
-        ${tablasEq}
+        <h3>📍 ${escaparHtml(gradoFiltro)} · Sección ${escaparHtml(sec)} <span>${eqsSec.length} ${eqsSec.length === 1 ? 'equipo' : 'equipos'}</span></h3>
+        <div class="reporte-equipos-grid">${tablasEq}</div>
       </div>`;
   }).join('');
 }
@@ -2398,6 +2415,10 @@ function imprimirReporteCalificaciones() {
 }
 
 function imprimirReporteListas() {
+  if (!$('#reporteFiltroGrado').value || !$('#reporteFiltroSeccion').value) {
+    toast('Selecciona un grado y una sección antes de imprimir.');
+    return;
+  }
   document.body.classList.add('imprimir-reporte-listas');
   window.addEventListener('afterprint', () => document.body.classList.remove('imprimir-reporte-listas'), { once: true });
   window.print();
