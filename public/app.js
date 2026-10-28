@@ -2239,7 +2239,7 @@ async function cargarReporteCalificaciones() {
     state.reporteCalificaciones = null;
     $('#reporteCalificacionesImprimible').style.display = 'none';
     estado.textContent = /reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)
-      ? 'El Apps Script conectado aún no tiene el endpoint de reportes. Actualiza y vuelve a implementar code.gs para consultar las calificaciones detalladas.'
+      ? 'La URL de Apps Script configurada no reconoce el endpoint de reportes. Verifica que public/config.js apunte a la implementación actualizada de code.gs y vuelve a publicar el frontend.'
       : `No se pudo cargar el reporte: ${e.message}`;
   }
 }
