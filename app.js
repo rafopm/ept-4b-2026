@@ -16,6 +16,7 @@ let state = {
   filas: [],
   ranking: [],
   rankingIndividual: [],
+  planMostrarTodasTareas: false,
   miInfo: null,
   equipos: [],
   alumnos: [],
@@ -778,12 +779,8 @@ function renderDashboardDocente() {
 
 function datosFiltrados() {
   const esAlumno = state.sesion?.tipo === 'alumno';
-  const seccion = esAlumno
-    ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-    : $('#filtroSeccion').value;
-  const grado = esAlumno
-    ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || ''
-    : $('#filtroGrado').value;
+  const seccion = esAlumno ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || '' : '';
+  const grado = esAlumno ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || '' : '';
   const rol = esAlumno ? state.sesion.alumno?.rol : '';
   return state.plan.filter(f =>
     (!grado || normalizarGrado(f.Grado) === normalizarGrado(grado)) &&
@@ -2049,15 +2046,41 @@ async function confirmarOtorgarXP() {
    6. REPORTES Y EXPORTACIÓN IMPRIMIBLE (DOCENTE)
    ========================================================= */
 function inicializarReportes() {
-  const secs = [...new Set(state.equipos.map(e => e.seccion).filter(Boolean))].sort();
-  $('#reporteFiltroSeccion').innerHTML = '<option value="">-- Todas las Secciones --</option>' +
-    secs.map(s => `<option value="${s}">Sección ${s}</option>`).join('');
+  const grados = [...new Set([
+    ...state.equipos.map(e => String(e.grado || '').trim()),
+    ...state.alumnos.map(a => String(a.grado || '').trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  $('#reporteFiltroGrado').innerHTML = '<option value="">-- Selecciona un grado --</option>' +
+    grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+  $('#reporteFiltroSeccion').innerHTML = '<option value="">-- Primero elige grado --</option>';
+  $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Primero elige sección --</option>';
+  $('#reporteFiltroSeccion').disabled = true;
+  $('#reporteFiltroEquipo').disabled = true;
+
+  $('#reporteFiltroGrado').onchange = () => {
+    const grado = $('#reporteFiltroGrado').value;
+    const secciones = [...new Set(state.equipos
+      .filter(e => normalizarGrado(e.grado) === normalizarGrado(grado))
+      .map(e => String(e.seccion || '').trim())
+      .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    $('#reporteFiltroSeccion').innerHTML = '<option value="">-- Selecciona una sección --</option>' +
+      secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+    $('#reporteFiltroSeccion').disabled = !grado || !secciones.length;
+    $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Primero elige sección --</option>';
+    $('#reporteFiltroEquipo').disabled = true;
+    renderReporteImprimible();
+  };
 
   $('#reporteFiltroSeccion').onchange = () => {
-    const s = $('#reporteFiltroSeccion').value;
-    const eqs = s ? state.equipos.filter(e => String(e.seccion).trim() === String(s).trim()) : state.equipos;
-    $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los Equipos --</option>' +
-      eqs.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
+    const grado = $('#reporteFiltroGrado').value;
+    const seccion = $('#reporteFiltroSeccion').value;
+    const equipos = state.equipos.filter(e =>
+      normalizarGrado(e.grado) === normalizarGrado(grado) &&
+      String(e.seccion || '').trim() === seccion
+    );
+    $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los equipos --</option>' +
+      equipos.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
+    $('#reporteFiltroEquipo').disabled = !seccion;
     renderReporteImprimible();
   };
 
@@ -2069,6 +2092,7 @@ function inicializarReportes() {
 }
 
 function renderReporteImprimible() {
+  const gradoFiltro = $('#reporteFiltroGrado').value;
   const secFiltro = $('#reporteFiltroSeccion').value;
   const eqFiltro = $('#reporteFiltroEquipo').value;
   const ocultarSensibles = $('#checkOcultarDatosSensibles').checked;
@@ -2078,6 +2102,7 @@ function renderReporteImprimible() {
   });
 
   let equipos = state.equipos;
+  if (gradoFiltro) equipos = equipos.filter(e => normalizarGrado(e.grado) === normalizarGrado(gradoFiltro));
   if (secFiltro) equipos = equipos.filter(e => String(e.seccion).trim() === String(secFiltro).trim());
   if (eqFiltro) equipos = equipos.filter(e => String(e.equipo_id) === String(eqFiltro));
 
@@ -2674,58 +2699,87 @@ async function cargarMisNotasAlumno() {
   try {
     const data = await apiGet('mi-nota', { correo });
     const porSemana = data.porSemana || [];
-    const tareasPlan = datosFiltrados().sort((a, b) =>
-      normalizarSemana(a.Semana) - normalizarSemana(b.Semana)
-    );
-    const tareasPlanHTML = tareasPlan.length
-      ? `<div class="tabla-wrap">
-          <table class="tabla">
-            <thead><tr><th>Semana</th><th>Tema</th><th>Tarea de mi rol</th><th>Entregable</th></tr></thead>
-            <tbody>${tareasPlan.map(tarea => `
-              <tr>
-                <td><b>${escaparHtml(tarea.Semana)}</b></td>
-                <td>${escaparHtml(tarea.Tema_Semanal)}</td>
-                <td>${escaparHtml(tarea.Tarea_Detallada)}</td>
-                <td>${escaparHtml(tarea.Entregable_Especifico)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`
-      : '<p class="hint">No hay tareas registradas para tu grado y rol.</p>';
+    const semanasCalificadas = porSemana.filter(semana => semana.calificado).length;
+    const semanasHTML = porSemana.length
+      ? porSemana.map(s => {
+        const detalle = Array.isArray(s.detalle) ? s.detalle : [];
+        const total = Number(s.total) || 0;
+        const max = Number(s.max) || 0;
+        const porcentaje = max ? Math.min(100, Math.round(total / max * 100)) : 0;
+        const comentarios = detalle.filter(criterio => String(criterio.comentario || '').trim());
+        const estado = s.calificado ? 'Calificada' : 'Pendiente';
+        const detalleCriterios = detalle.length
+          ? `<ul class="calificacion-criterios">${detalle.map(criterio => {
+            const puntaje = Number(criterio.puntaje) || 0;
+            const maximo = Number(criterio.max) || 0;
+            const porcentajeCriterio = maximo ? Math.min(100, Math.round(puntaje / maximo * 100)) : 0;
+            return `<li class="calificacion-criterio">
+              <div class="criterio-calificacion-cabecera">
+                <b>${escaparHtml(criterio.criterio || 'Criterio')}</b>
+                <strong>${puntaje} <span>/ ${maximo} pts</span></strong>
+              </div>
+              <div class="barra-progreso-calificacion" role="progressbar" aria-valuenow="${porcentajeCriterio}" aria-valuemin="0" aria-valuemax="100">
+                <span style="width:${porcentajeCriterio}%"></span>
+              </div>
+              ${criterio.comentario ? `<p class="comentario-criterio"><b>Comentario:</b> ${escaparHtml(criterio.comentario)}</p>` : ''}
+            </li>`;
+          }).join('')}</ul>`
+          : '<p class="hint">No hay desglose por criterios disponible para esta semana.</p>';
+        const retroalimentacion = s.observacion_pc || comentarios.length
+          ? `<aside class="retroalimentacion-calificacion">
+              <h4>💬 Retroalimentación del docente</h4>
+              ${s.observacion_pc ? `<p>${escaparHtml(s.observacion_pc)}</p>` : ''}
+              ${comentarios.length ? `<p>También hay comentarios en ${comentarios.length === 1 ? 'un criterio' : `${comentarios.length} criterios`} del desglose.</p>` : ''}
+            </aside>`
+          : s.calificado
+            ? '<p class="hint sin-retroalimentacion">El docente no dejó una observación general ni comentarios adicionales. El desglose muestra cómo se asignaron los puntos de cada criterio.</p>'
+            : '<p class="hint sin-retroalimentacion">Aún no hay una calificación ni retroalimentación del docente para esta semana.</p>';
 
-    const semanasHTML = porSemana.map(s => `
-      <div class="entrega-card ${s.calificado ? 'calificada' : 'pendiente'}">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <h4>Semana ${s.semana} ${s.calificado ? `✅ ${s.total}/${s.max} pts` : '⏳ Pendiente de Calificación'}</h4>
-          <span style="font-size:12px;color:#666">${s.observacion_pc ? `PC: "${s.observacion_pc}"` : ''}</span>
-        </div>
-        ${s.calificado && s.detalle ? `
-          <div style="margin-top:8px">
-            ${s.detalle.map(d => `
-              <div class="criterio-mini">
-                <b>${d.criterio}:</b> ${d.puntaje}/${d.max}
-                ${d.comentario ? `<em> — "${d.comentario}"</em>` : ''}
-              </div>`).join('')}
-          </div>
-        ` : '<p class="hint" style="margin-top:4px">Aún no calificada por el docente.</p>'}
-      </div>
-    `).join('');
+        return `<article class="calificacion-semana-card ${s.calificado ? 'calificada' : 'pendiente'}">
+          <header class="calificacion-semana-header">
+            <div>
+              <span class="semana-etiqueta">Semana ${escaparHtml(s.semana)}</span>
+              <span class="estado-calificacion ${s.calificado ? 'estado-calificacion-lista' : ''}">${s.calificado ? '✓ ' : '◷ '}${estado}</span>
+            </div>
+            <div class="puntaje-semana">
+              <strong>${total}<span> / ${max} pts</span></strong>
+              <small>${s.calificado ? `${porcentaje}% de los puntos` : 'Pendiente de evaluación'}</small>
+            </div>
+          </header>
+          ${s.calificado ? `<div class="barra-progreso-calificacion resumen-progreso" role="progressbar" aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100"><span style="width:${porcentaje}%"></span></div>` : ''}
+          <section class="desglose-calificacion">
+            <h4>¿Cómo se obtuvo esta calificación?</h4>
+            <p class="hint">La nota se calcula sumando los puntos asignados en cada criterio de la rúbrica.</p>
+            ${detalleCriterios}
+          </section>
+          ${retroalimentacion}
+        </article>`;
+      }).join('')
+      : '<div class="estado-vacio-calificaciones"><span>📝</span><h3>Aún no hay semanas para mostrar</h3><p>Cuando se registren evaluaciones, aquí verás el puntaje por semana y la retroalimentación del docente.</p></div>';
 
     cont.innerHTML = `
-      <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-        <div class="posicion-destacada" style="flex:1">
-          <div class="num">${data.totalGeneral || 0}</div>
-          <div class="lbl">Puntos Totales Acumulados (XP)</div>
+      <div class="resumen-calificaciones">
+        <div class="resumen-calificacion-card">
+          <span class="resumen-calificacion-icon">🏅</span>
+          <div><strong>${Number(data.totalBase) || 0}</strong><span>Puntos de calificaciones</span></div>
         </div>
-        <div class="posicion-destacada" style="flex:1;background:linear-gradient(135deg,#e8f0fe,#fff);border-color:#1a73e8">
-          <div class="num" style="color:#1a73e8">${data.porcentaje || 0}%</div>
-          <div class="lbl">Porcentaje de Rendimiento General</div>
+        <div class="resumen-calificacion-card">
+          <span class="resumen-calificacion-icon">⚡</span>
+          <div><strong>${Number(data.xpExtraTotal) || 0}</strong><span>Puntos extra</span></div>
+        </div>
+        <div class="resumen-calificacion-card resumen-calificacion-principal">
+          <span class="resumen-calificacion-icon">📊</span>
+          <div><strong>${Number(data.porcentaje) || 0}%</strong><span>Rendimiento acumulado</span></div>
+        </div>
+        <div class="resumen-calificacion-card">
+          <span class="resumen-calificacion-icon">📚</span>
+          <div><strong>${semanasCalificadas}<small> / ${porSemana.length}</small></strong><span>Semanas calificadas</span></div>
         </div>
       </div>
-      <h3 style="margin-bottom:12px;color:var(--azul-oscuro)">📋 Mi matriz curricular y tareas asignadas</h3>
-      ${tareasPlanHTML}
-      <h3 style="margin-bottom:12px;color:var(--azul-oscuro)">Detalle Semanal de Calificaciones:</h3>
-      ${semanasHTML}
+      <div class="historial-calificaciones-heading">
+        <div><h3>Historial de calificaciones</h3><p class="hint">Consulta el desglose de cada semana para entender tu puntaje y leer la retroalimentación.</p></div>
+      </div>
+      <div class="historial-calificaciones">${semanasHTML}</div>
     `;
 
   } catch (e) {
@@ -2951,7 +3005,8 @@ function actualizarOpcionesAlumnoNuevoEquipo(rol) {
    ========================================================= */
 function renderPlan() {
   const esDocente = state.sesion?.tipo === 'docente';
-  let d = datosFiltrados();
+  const esAlumno = state.sesion?.tipo === 'alumno';
+  let d;
   if (esDocente) {
     const grado = $('#planFiltroGrado').value;
     const rol = $('#planFiltroRol').value;
@@ -2959,19 +3014,47 @@ function renderPlan() {
       (!grado || normalizarGrado(fila.Grado) === normalizarGrado(grado)) &&
       (!rol || rolCoincide(fila.Rol, rol))
     );
+  } else if (esAlumno) {
+    const alumno = state.sesion.alumno || {};
+    const equipo = state.sesion.equipo || {};
+    const grado = alumno.grado || equipo.grado || '';
+    const seccion = alumno.seccion || equipo.seccion || '';
+    d = state.plan.filter(fila =>
+      (!grado || normalizarGrado(fila.Grado) === normalizarGrado(grado)) &&
+      (!seccion || !fila.Seccion || String(fila.Seccion).trim() === String(seccion).trim()) &&
+      (state.planMostrarTodasTareas || rolCoincide(fila.Rol, alumno.rol))
+    );
+    $('#controlesPlanAlumno').style.display = 'block';
+    $('#btnPlanSoloRol').classList.toggle('active', !state.planMostrarTodasTareas);
+    $('#btnPlanSoloRol').classList.toggle('btn-ghost', state.planMostrarTodasTareas);
+    $('#btnPlanTodasTareas').classList.toggle('active', state.planMostrarTodasTareas);
+    $('#btnPlanTodasTareas').classList.toggle('btn-ghost', !state.planMostrarTodasTareas);
+    $('#btnPlanSoloRol').setAttribute('aria-pressed', String(!state.planMostrarTodasTareas));
+    $('#btnPlanTodasTareas').setAttribute('aria-pressed', String(state.planMostrarTodasTareas));
+    $('#planAlumnoAyuda').textContent = state.planMostrarTodasTareas
+      ? 'Las tareas de otros roles se muestran para que sepas cómo apoyar a tus compañeros.'
+      : `Se muestran las tareas asignadas a tu rol: ${alumno.rol || 'sin rol asignado'}.`;
   }
   const columnaRecurso = $('#thPlanRecurso');
   columnaRecurso.textContent = esDocente ? 'Material docente' : 'Guía de aprendizaje';
-  $('#tablaPlan tbody').innerHTML = d.length ? d.map(x => `
+  const filasPlan = [...d].sort((a, b) =>
+    normalizarSemana(a.Semana) - normalizarSemana(b.Semana) ||
+    String(a.Rol || '').localeCompare(String(b.Rol || ''), 'es')
+  );
+  const rolAlumno = state.sesion?.alumno?.rol || '';
+  $('#tablaPlan tbody').innerHTML = filasPlan.length ? filasPlan.map(x => `
     <tr>
-      <td><b>${x.Grado}</b></td>
-      <td style="text-align:center"><b>${x.Semana}</b></td>
-      <td>${x.Tema_Semanal}</td>
-      <td><span class="badge-rol rol-${x.Rol}" style="font-size:10px;padding:2px 6px">${x.Rol}</span></td>
-      <td>${x.Tarea_Detallada}</td>
-      <td>${x.Entregable_Especifico}</td>
-      <td><b>${x.Rol_Backup || '—'}</b></td>
-      <td style="font-size:12px;color:#555">${x.Responsabilidad_Backup || '—'}</td>
+      <td><b>${escaparHtml(x.Grado)}</b></td>
+      <td style="text-align:center"><b>${escaparHtml(x.Semana)}</b></td>
+      <td>${escaparHtml(x.Tema_Semanal)}</td>
+      <td>${String(x.Rol || '').split(/[,;|/]+/).map(rol => rol.trim()).filter(Boolean).map(rol => `
+        <span class="plan-rol-tag ${esAlumno && rol.toUpperCase() === String(rolAlumno).toUpperCase() ? 'plan-rol-propio' : 'plan-rol-companero'}">
+          ${escaparHtml(rol)}${esAlumno && rol.toUpperCase() === String(rolAlumno).toUpperCase() ? ' · tú' : ''}
+        </span>`).join(' ') || '—'}</td>
+      <td>${escaparHtml(x.Tarea_Detallada)}</td>
+      <td>${escaparHtml(x.Entregable_Especifico)}</td>
+      <td><b>${escaparHtml(x.Rol_Backup || '—')}</b></td>
+      <td style="font-size:12px;color:#555">${escaparHtml(x.Responsabilidad_Backup || '—')}</td>
       <td>${enlacePlanHtml(
         esDocente ? x.Link_Presentacion : x.Link_Guia_Aprendizaje,
         esDocente ? 'Abrir presentación' : 'Abrir guía'
@@ -2984,7 +3067,19 @@ function inicializarFiltrosPlan() {
   const filtros = $('#filtrosPlanCurricular');
   if (!filtros) return;
   const esDocente = state.sesion?.tipo === 'docente';
+  const esAlumno = state.sesion?.tipo === 'alumno';
   filtros.style.display = esDocente ? 'flex' : 'none';
+  $('#controlesPlanAlumno').style.display = esAlumno ? 'block' : 'none';
+  if (esAlumno) {
+    $('#btnPlanSoloRol').onclick = () => {
+      state.planMostrarTodasTareas = false;
+      renderPlan();
+    };
+    $('#btnPlanTodasTareas').onclick = () => {
+      state.planMostrarTodasTareas = true;
+      renderPlan();
+    };
+  }
   if (!esDocente) return;
 
   const grados = [...new Set(state.plan.map(fila => String(fila.Grado || '').trim()).filter(Boolean))]
@@ -3355,40 +3450,9 @@ async function arrancarApp() {
   actualizarSelectoresSemana();
   inicializarFiltrosPlan();
 
-  // Filtros de topbar
-  const grados = [...new Set(state.plan.map(f => f.Grado))].sort();
-  $('#filtroGrado').innerHTML = '<option value="">Todos los grados</option>' +
-    grados.map(g => `<option value="${g}">${g}</option>`).join('');
-
-  if (state.sesion.tipo === 'docente') {
-    try {
-      const login = await apiGet('login', { correo: state.sesion.correo });
-      const secs = login.secciones || [];
-      $('#filtroSeccion').innerHTML = '<option value="">Todas las secciones</option>' +
-        secs.map(s => `<option value="${s}">${s}</option>`).join('');
-    } catch (e) {}
-  } else if (state.sesion.alumno?.seccion) {
-    $('#filtroSeccion').innerHTML =
-      `<option value="${state.sesion.alumno.seccion}">Sección ${state.sesion.alumno.seccion}</option>`;
-    $('#filtroSeccion').value = state.sesion.alumno.seccion;
-  }
-
   // Listeners de navegación
   $$('.menu-item').forEach(b => b.addEventListener('click', () => navegar(b.dataset.view)));
   $('#toggleSidebar').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
-
-  $('#filtroSeccion').onchange = () => {
-    if ($('#view-dashboard').classList.contains('active')) {
-      if (state.sesion.tipo === 'docente') renderDashboardDocente();
-    }
-    if ($('#view-ranking').classList.contains('active')) cargarRanking();
-    if ($('#view-ranking-individual').classList.contains('active')) cargarRankingIndividual();
-  };
-
-  $('#filtroGrado').onchange = () => {
-    if ($('#view-dashboard').classList.contains('active') && state.sesion.tipo === 'docente') renderDashboardDocente();
-    if ($('#view-plan').classList.contains('active')) renderPlan();
-  };
 
   $('#btnRefresh').onclick = async () => {
     await cargarPlan();
