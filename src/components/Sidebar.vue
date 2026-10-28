@@ -27,6 +27,7 @@
       <button class="menu-item" data-view="ranking-individual"><span>🥇</span> Ranking Individual XP</button>
       <button class="menu-item" data-view="plan"><span>📋</span> Matriz Curricular</button>
       <button class="menu-item" data-view="recursos"><span>📚</span> Recursos</button>
+      <button class="menu-item" data-view="tecnicas-estudio"><span>🧠</span> Técnicas de Estudio</button>
       <button class="menu-item" data-view="acerca"><span>ℹ️</span> Acerca de</button>
     </nav>
 

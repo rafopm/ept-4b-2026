@@ -16,11 +16,23 @@ let state = {
   filas: [],
   ranking: [],
   rankingIndividual: [],
+  planMostrarTodasTareas: false,
   miInfo: null,
   equipos: [],
   alumnos: [],
   solicitudesCambioEquipo: [],
   solicitudCambioEquipo: null,
+  reporteCalificaciones: null,
+  tipoReporteCalificaciones: 'entregas',
+  pomodoro: {
+    fase: 'enfoque',
+    duracionEnfoque: 25,
+    duracionDescanso: 5,
+    segundosRestantes: 25 * 60,
+    finalizaEn: null,
+    ciclosCompletados: 0,
+    intervalo: null
+  },
   entregas: [],
   evidencias: [],
   puntosExtra: [],
@@ -293,6 +305,7 @@ const TITULOS = {
   'ranking-individual': 'Ranking Individual XP',
   plan: 'Matriz Curricular (Plan Data)',
   recursos: 'Centro de Recursos y Herramientas',
+  'tecnicas-estudio': 'Técnicas de Estudio',
   acerca: 'Acerca de'
 };
 
@@ -313,7 +326,10 @@ function navegar(view) {
   if (view === 'calificacion-agil') inicializarCalificacionAgil();
   if (view === 'gestion-equipos') cargarGestion();
   if (view === 'gamificacion') cargarGamificacion();
-  if (view === 'reportes') inicializarReportes();
+  if (view === 'reportes') {
+    inicializarReportes();
+    cargarReporteCalificaciones();
+  }
   if (view === 'sorteo') inicializarSorteo();
   if (view === 'ranking') cargarRanking();
   if (view === 'ranking-individual') cargarRankingIndividual();
@@ -321,6 +337,7 @@ function navegar(view) {
   if (view === 'mis-notas') cargarMisNotasAlumno();
   if (view === 'plan') renderPlan();
   if (view === 'recursos') inicializarRecursos();
+  if (view === 'tecnicas-estudio') renderPomodoro();
 
   if (window.innerWidth < 900) $('#sidebar').classList.remove('open');
 }
@@ -778,12 +795,8 @@ function renderDashboardDocente() {
 
 function datosFiltrados() {
   const esAlumno = state.sesion?.tipo === 'alumno';
-  const seccion = esAlumno
-    ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-    : $('#filtroSeccion').value;
-  const grado = esAlumno
-    ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || ''
-    : $('#filtroGrado').value;
+  const seccion = esAlumno ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || '' : '';
+  const grado = esAlumno ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || '' : '';
   const rol = esAlumno ? state.sesion.alumno?.rol : '';
   return state.plan.filter(f =>
     (!grado || normalizarGrado(f.Grado) === normalizarGrado(grado)) &&
@@ -1166,6 +1179,8 @@ function renderPanelCalificacionAgil() {
              ⚠️ Sin evidencia digital registrada por el alumno. Revisar directamente en su PC.
            </div>`;
 
+      const comentarioPrevio = escaparHtml(prevInd?.comentario || '');
+
       return `
         <div class="alumno-eval-card" data-correo="${escaparHtml(al.correo)}" data-equipo-id="${escaparHtml(al.equipo_id || '')}">
           <div>
@@ -1192,6 +1207,30 @@ function renderPanelCalificacionAgil() {
                 ⛔ No cumplió: asignar 0
               </button>
               <small>Aplica 0 a todos los criterios individuales. Verifica el trabajo antes de marcarlo.</small>
+            </div>
+
+            <div class="retroalimentacion-rapida">
+              <label class="lbl-campo" for="mensajeFeedback_${al.correo.replace(/[^a-zA-Z0-9]/g, '_')}">💬 Mensaje breve para el estudiante</label>
+              <select id="mensajeFeedback_${al.correo.replace(/[^a-zA-Z0-9]/g, '_')}" class="select select-feedback-ind" onchange="aplicarMensajeRetroalimentacion(this)">
+                <option value="">Elegir una sugerencia (puedes editarla)</option>
+                <optgroup label="Para mejorar">
+                  <option value="No se registró la entrega de esta tarea. Para la próxima, organiza tu tiempo y pide apoyo si algo te impide avanzar.">No presentó la tarea</option>
+                  <option value="El trabajo presentado está incompleto y requiere más dedicación. Puedes mejorar siguiendo los pasos y revisando los criterios de la actividad.">Trabajo incompleto o con poco desarrollo</option>
+                  <option value="Durante la actividad fue necesario retomar la atención en la tarea. Sé que puedes enfocarte y aportar más en la siguiente sesión.">Se distrajo durante la actividad</option>
+                  <option value="Necesitas participar y aportar de manera más constante al trabajo. Puedes hacerlo; empieza proponiéndote una tarea concreta para la próxima sesión.">Participación o esfuerzo insuficiente</option>
+                  <option value="La evidencia no permite verificar todo lo solicitado. Completa los pasos pendientes y muestra tu proceso para que podamos reconocer tu avance.">Evidencia insuficiente</option>
+                  <option value="Aún necesitas entregar dentro del plazo acordado. Organizar las etapas del trabajo te ayudará a terminar a tiempo.">Entrega fuera del plazo</option>
+                </optgroup>
+                <optgroup label="Ánimo y reconocimiento">
+                  <option value="Vas progresando. Mantén el esfuerzo y sigue practicando: eres capaz de alcanzar el objetivo.">Ánimo para seguir avanzando</option>
+                  <option value="Se nota tu esfuerzo y perseverancia. Sigue así; cada paso que das fortalece tu aprendizaje.">Reconocer esfuerzo y perseverancia</option>
+                  <option value="Tu participación aportó al equipo. Confía en tus ideas y continúa compartiéndolas.">Reconocer participación</option>
+                  <option value="Se observa una mejora respecto al trabajo anterior. Sigue practicando; estás avanzando y puedes lograrlo.">Reconocer progreso</option>
+                  <option value="Buen trabajo: cumpliste con lo esperado y puedes seguir creciendo. El siguiente paso es profundizar y probar nuevas ideas.">Reconocer cumplimiento</option>
+                </optgroup>
+              </select>
+              <textarea class="input-full input-feedback-ind" rows="2" maxlength="500" placeholder="Elige una sugerencia o escribe un mensaje breve, respetuoso y específico.">${comentarioPrevio}</textarea>
+              <small>Personaliza el mensaje según lo observado. La calificación debe describir el trabajo, no etiquetar a la persona.</small>
             </div>
 
             <!-- Tabla Criterios Individuales -->
@@ -1249,6 +1288,11 @@ function autoLlenarMaximos() {
   toast('⭐ Todas las notas se establecieron en su valor máximo');
 }
 
+function aplicarMensajeRetroalimentacion(select) {
+  const campo = select.closest('.retroalimentacion-rapida')?.querySelector('.input-feedback-ind');
+  if (campo && select.value) campo.value = select.value;
+}
+
 function aplicarNotaCeroIndividual(button) {
   const card = button.closest('.alumno-eval-card');
   if (!card) return;
@@ -1286,12 +1330,14 @@ async function guardarCalificacionAgilCompleta() {
       puntaje: Number(tr.querySelector('.input-puntaje-ind').value) || 0
     }));
     const obsInd = card.querySelector('.input-obs-ind').value.trim();
+    const comentario = card.querySelector('.input-feedback-ind').value.trim();
     const asumioBackup = card.querySelector('.check-backup-bonus').checked;
 
     return {
       correo_alumno: correo,
       equipo_id: card.dataset.equipoId,
       criterios,
+      comentario,
       observacion_pc: obsInd,
       bonus_backup: asumioBackup ? { puntos: 10, motivo: `Asumió Rol Backup en Semana ${semana}` } : null
     };
@@ -1316,6 +1362,7 @@ async function guardarCalificacionAgilCompleta() {
           equipo_id: ind.equipo_id,
           correo_alumno: ind.correo_alumno,
           criterios: ind.criterios,
+          comentario: ind.comentario,
           observacion_pc: ind.observacion_pc
         });
         if (ind.bonus_backup) {
@@ -1358,6 +1405,7 @@ async function guardarCalificacionAgilCompleta() {
             equipo_id: ind.equipo_id,
             correo_alumno: ind.correo_alumno,
             criterios: ind.criterios,
+            comentario: ind.comentario,
             observacion_pc: ind.observacion_pc
           });
 
@@ -1443,13 +1491,38 @@ async function cargarGestion() {
   }
 
   try {
+    const boton = $('#btnRecargarSolicitudesEquipo');
+    if (boton && !boton._iniciado) {
+      boton._iniciado = true;
+      boton.onclick = cargarSolicitudesCambioEquipo;
+    }
+    await cargarSolicitudesCambioEquipo();
+  } catch (e) {
+    toast('❌ No se pudo cargar la gestión: ' + e.message);
+  }
+}
+
+async function cargarSolicitudesCambioEquipo() {
+  const contador = $('#solicitudesEquipoContador');
+  const lista = $('#solicitudesEquipoLista');
+  const boton = $('#btnRecargarSolicitudesEquipo');
+  contador.textContent = 'Cargando...';
+  lista.innerHTML = '<p class="hint">Consultando solicitudes registradas...</p>';
+  if (boton) boton.disabled = true;
+
+  try {
     const data = await apiGet('solicitudes-equipo');
     state.solicitudesCambioEquipo = data.solicitudes || [];
     renderSolicitudesCambioEquipo();
   } catch (e) {
-    $('#solicitudesEquipoContador').textContent = 'No disponible';
-    $('#solicitudesEquipoLista').innerHTML =
-      `<p class="hint">No se pudieron cargar las solicitudes: ${escaparHtml(e.message)}. Verifica que code.gs esté actualizado y desplegado.</p>`;
+    state.solicitudesCambioEquipo = [];
+    contador.textContent = 'No disponible';
+    const mensaje = /acción inválida/i.test(e.message)
+      ? 'El Apps Script conectado todavía no reconoce las solicitudes de cambio. No se pueden listar solicitudes hasta actualizar y volver a implementar code.gs. Como los alumnos tampoco pueden consultar el estado, no deben enviar ni volver a intentar cambios hasta que el docente confirme la actualización.'
+      : `No se pudieron consultar las solicitudes. Verifica la conexión y vuelve a intentarlo. Detalle: ${e.message}`;
+    lista.innerHTML = `<p class="estado-solicitud-no-disponible">${escaparHtml(mensaje)}</p>`;
+  } finally {
+    if (boton) boton.disabled = false;
   }
 }
 
@@ -2024,26 +2097,53 @@ async function confirmarOtorgarXP() {
    6. REPORTES Y EXPORTACIÓN IMPRIMIBLE (DOCENTE)
    ========================================================= */
 function inicializarReportes() {
-  const secs = [...new Set(state.equipos.map(e => e.seccion).filter(Boolean))].sort();
-  $('#reporteFiltroSeccion').innerHTML = '<option value="">-- Todas las Secciones --</option>' +
-    secs.map(s => `<option value="${s}">Sección ${s}</option>`).join('');
+  const grados = [...new Set([
+    ...state.equipos.map(e => String(e.grado || '').trim()),
+    ...state.alumnos.map(a => String(a.grado || '').trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  $('#reporteFiltroGrado').innerHTML = '<option value="">-- Selecciona un grado --</option>' +
+    grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+  $('#reporteFiltroSeccion').innerHTML = '<option value="">-- Primero elige grado --</option>';
+  $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Primero elige sección --</option>';
+  $('#reporteFiltroSeccion').disabled = true;
+  $('#reporteFiltroEquipo').disabled = true;
+
+  $('#reporteFiltroGrado').onchange = () => {
+    const grado = $('#reporteFiltroGrado').value;
+    const secciones = [...new Set(state.equipos
+      .filter(e => normalizarGrado(e.grado) === normalizarGrado(grado))
+      .map(e => String(e.seccion || '').trim())
+      .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    $('#reporteFiltroSeccion').innerHTML = '<option value="">-- Selecciona una sección --</option>' +
+      secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+    $('#reporteFiltroSeccion').disabled = !grado || !secciones.length;
+    $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Primero elige sección --</option>';
+    $('#reporteFiltroEquipo').disabled = true;
+    renderReporteImprimible();
+  };
 
   $('#reporteFiltroSeccion').onchange = () => {
-    const s = $('#reporteFiltroSeccion').value;
-    const eqs = s ? state.equipos.filter(e => String(e.seccion).trim() === String(s).trim()) : state.equipos;
-    $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los Equipos --</option>' +
-      eqs.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
+    const grado = $('#reporteFiltroGrado').value;
+    const seccion = $('#reporteFiltroSeccion').value;
+    const equipos = state.equipos.filter(e =>
+      normalizarGrado(e.grado) === normalizarGrado(grado) &&
+      String(e.seccion || '').trim() === seccion
+    );
+    $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los equipos --</option>' +
+      equipos.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
+    $('#reporteFiltroEquipo').disabled = !seccion;
     renderReporteImprimible();
   };
 
   $('#reporteFiltroEquipo').onchange = renderReporteImprimible;
   $('#checkOcultarDatosSensibles').onchange = renderReporteImprimible;
-  $('#btnImprimirReporte').onclick = () => window.print();
+  $('#btnImprimirReporte').onclick = imprimirReporteListas;
 
   renderReporteImprimible();
 }
 
 function renderReporteImprimible() {
+  const gradoFiltro = $('#reporteFiltroGrado').value;
   const secFiltro = $('#reporteFiltroSeccion').value;
   const eqFiltro = $('#reporteFiltroEquipo').value;
   const ocultarSensibles = $('#checkOcultarDatosSensibles').checked;
@@ -2053,6 +2153,7 @@ function renderReporteImprimible() {
   });
 
   let equipos = state.equipos;
+  if (gradoFiltro) equipos = equipos.filter(e => normalizarGrado(e.grado) === normalizarGrado(gradoFiltro));
   if (secFiltro) equipos = equipos.filter(e => String(e.seccion).trim() === String(secFiltro).trim());
   if (eqFiltro) equipos = equipos.filter(e => String(e.equipo_id) === String(eqFiltro));
 
@@ -2117,6 +2218,315 @@ function renderReporteImprimible() {
         ${tablasEq}
       </div>`;
   }).join('');
+}
+
+async function cargarReporteCalificaciones() {
+  const estado = $('#reporteCalificacionesEstado');
+  const botonImprimir = $('#btnImprimirCalificaciones');
+  estado.textContent = 'Cargando calificaciones y puntos adicionales...';
+  botonImprimir.disabled = true;
+  try {
+    const data = await apiGet('reporte-calificaciones');
+    state.reporteCalificaciones = {
+      calificaciones: Array.isArray(data.calificaciones) ? data.calificaciones : [],
+      puntosExtra: Array.isArray(data.puntos_extra) ? data.puntos_extra : [],
+      actualizado: data.actualizado || ''
+    };
+    inicializarFiltrosReporteCalificaciones();
+    estado.textContent = 'Datos actualizados. Selecciona un grado y una sección para consultar o imprimir el reporte.';
+    renderReporteCalificaciones();
+  } catch (e) {
+    state.reporteCalificaciones = null;
+    $('#reporteCalificacionesImprimible').style.display = 'none';
+    estado.textContent = /reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)
+      ? 'El Apps Script conectado aún no tiene el endpoint de reportes. Actualiza y vuelve a implementar code.gs para consultar las calificaciones detalladas.'
+      : `No se pudo cargar el reporte: ${e.message}`;
+  }
+}
+
+function inicializarFiltrosReporteCalificaciones() {
+  const datos = state.reporteCalificaciones;
+  const equipos = state.equipos;
+  const alumnos = state.alumnos;
+  const calificaciones = datos?.calificaciones || [];
+  const extras = datos?.puntosExtra || [];
+  const grados = [...new Set([
+    ...equipos.map(e => String(e.grado || '').trim()),
+    ...alumnos.map(a => String(a.grado || '').trim()),
+    ...calificaciones.map(c => String(c.grado || '').trim()),
+    ...extras.map(x => String(x.grado || '').trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+
+  $('#calificacionesFiltroGrado').innerHTML = '<option value="">-- Selecciona un grado --</option>' +
+    grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+  $('#calificacionesFiltroSeccion').innerHTML = '<option value="">-- Primero elige grado --</option>';
+  $('#calificacionesFiltroSeccion').disabled = true;
+  $('#calificacionesFiltroGrado').onchange = () => {
+    const grado = $('#calificacionesFiltroGrado').value;
+    const gradoNormalizado = normalizarGrado(grado);
+    const secciones = [...new Set([
+      ...equipos.filter(e => normalizarGrado(e.grado) === gradoNormalizado).map(e => String(e.seccion || '').trim()),
+      ...alumnos.filter(a => normalizarGrado(a.grado) === gradoNormalizado).map(a => String(a.seccion || '').trim()),
+      ...calificaciones.filter(c => normalizarGrado(c.grado) === gradoNormalizado).map(c => String(c.seccion || '').trim()),
+      ...extras.filter(x => normalizarGrado(x.grado) === gradoNormalizado).map(x => String(x.seccion || '').trim())
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    $('#calificacionesFiltroSeccion').innerHTML = '<option value="">-- Selecciona una sección --</option>' +
+      secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+    $('#calificacionesFiltroSeccion').disabled = !grado || !secciones.length;
+    renderReporteCalificaciones();
+  };
+  $('#calificacionesFiltroSeccion').onchange = renderReporteCalificaciones;
+
+  $('#btnReporteEntregas').onclick = () => {
+    state.tipoReporteCalificaciones = 'entregas';
+    actualizarTabsReporteCalificaciones();
+    renderReporteCalificaciones();
+  };
+  $('#btnReportePuntosExtra').onclick = () => {
+    state.tipoReporteCalificaciones = 'extras';
+    actualizarTabsReporteCalificaciones();
+    renderReporteCalificaciones();
+  };
+  $('#btnImprimirCalificaciones').onclick = imprimirReporteCalificaciones;
+  actualizarTabsReporteCalificaciones();
+}
+
+function actualizarTabsReporteCalificaciones() {
+  const entregasActivas = state.tipoReporteCalificaciones === 'entregas';
+  $('#btnReporteEntregas').classList.toggle('active', entregasActivas);
+  $('#btnReporteEntregas').classList.toggle('btn-ghost', !entregasActivas);
+  $('#btnReporteEntregas').setAttribute('aria-pressed', String(entregasActivas));
+  $('#btnReportePuntosExtra').classList.toggle('active', !entregasActivas);
+  $('#btnReportePuntosExtra').classList.toggle('btn-ghost', entregasActivas);
+  $('#btnReportePuntosExtra').setAttribute('aria-pressed', String(!entregasActivas));
+}
+
+function renderReporteCalificaciones() {
+  const salida = $('#reporteCalificacionesImprimible');
+  const grado = $('#calificacionesFiltroGrado').value;
+  const seccion = $('#calificacionesFiltroSeccion').value;
+  const estado = $('#reporteCalificacionesEstado');
+  if (!state.reporteCalificaciones || !grado || !seccion) {
+    salida.style.display = 'none';
+    $('#btnImprimirCalificaciones').disabled = true;
+    if (state.reporteCalificaciones && !grado) estado.textContent = 'Selecciona un grado y una sección para consultar o imprimir el reporte.';
+    else if (state.reporteCalificaciones && grado && !seccion) estado.textContent = 'Selecciona una sección para ver el detalle.';
+    return;
+  }
+
+  const gradoNormalizado = normalizarGrado(grado);
+  const calificaciones = state.reporteCalificaciones.calificaciones.filter(registro =>
+    normalizarGrado(registro.grado) === gradoNormalizado &&
+    String(registro.seccion || '').trim() === seccion
+  );
+  const extras = state.reporteCalificaciones.puntosExtra.filter(registro =>
+    normalizarGrado(registro.grado) === gradoNormalizado &&
+    String(registro.seccion || '').trim() === seccion
+  );
+  const mostrandoEntregas = state.tipoReporteCalificaciones === 'entregas';
+  const cantidad = mostrandoEntregas ? calificaciones.length : extras.length;
+  const puntos = mostrandoEntregas
+    ? calificaciones.reduce((suma, registro) => suma + (Number(registro.puntaje) || 0), 0)
+    : extras.reduce((suma, registro) => suma + (Number(registro.puntos) || 0), 0);
+
+  salida.style.display = '';
+  $('#btnImprimirCalificaciones').disabled = false;
+  $('#reporteCalificacionesFecha').textContent = `Fecha: ${new Date().toLocaleDateString('es-PE')}`;
+  $('#reporteCalificacionesSubtitulo').textContent =
+    `${mostrandoEntregas ? 'Calificaciones por entrega' : 'Puntos adicionales'} · ${grado} · Sección ${seccion}`;
+  $('#reporteCalificacionesResumen').innerHTML = `
+    <div><b>${cantidad}</b><span>${mostrandoEntregas ? 'evaluaciones' : 'bonificaciones registradas'}</span></div>
+    <div><b>${puntos}</b><span>${mostrandoEntregas ? 'puntos asignados' : 'puntos adicionales'}</span></div>
+    <div><b>${grado}</b><span>Grado</span></div>
+    <div><b>${escaparHtml(seccion)}</b><span>Sección</span></div>`;
+
+  $('#reporteCalificacionesContenido').innerHTML = mostrandoEntregas
+    ? renderTablaReporteEntregas(calificaciones)
+    : renderTablaReporteExtras(extras);
+  estado.textContent = `${cantidad} ${mostrandoEntregas ? 'evaluaciones' : 'registros de puntos extra'} para ${grado}, sección ${seccion}.`;
+}
+
+function renderTablaReporteEntregas(calificaciones) {
+  if (!calificaciones.length) return '<p class="hint">No hay calificaciones por entrega para este grado y sección.</p>';
+  return `<div class="tabla-wrap"><table class="tabla">
+    <thead><tr>
+      <th>Fecha</th><th>Semana</th><th>Tipo</th><th>Estudiante / Equipo</th><th>Rol</th>
+      <th>Puntaje</th><th>Detalle por criterio</th><th>Observación docente</th><th>Evidencia</th>
+    </tr></thead>
+    <tbody>${calificaciones.map(registro => {
+      const criterios = (registro.criterios || []).map(criterio =>
+        `<div class="reporte-criterio"><b>${escaparHtml(criterio.nombre)}</b>: ${Number(criterio.puntaje) || 0}/${Number(criterio.maximo) || 0}${criterio.comentario ? `<br><small>${escaparHtml(criterio.comentario)}</small>` : ''}</div>`
+      ).join('');
+      const fecha = registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-PE') : '—';
+      return `<tr>
+        <td>${escaparHtml(fecha)}</td>
+        <td>${registro.semana === null ? '—' : escaparHtml(registro.semana)}</td>
+        <td>${registro.tipo === 'grupal' ? 'Grupal' : 'Individual'}</td>
+        <td><b>${escaparHtml(registro.tipo === 'grupal' ? registro.nombre_equipo : registro.nombre_alumno)}</b><br><small>${escaparHtml(registro.tipo === 'grupal' ? registro.equipo_id : registro.correo_alumno)}</small></td>
+        <td>${escaparHtml(registro.rol || '—')}</td>
+        <td><b>${Number(registro.puntaje) || 0}/${Number(registro.maximo) || 0}</b></td>
+        <td>${criterios || '—'}</td>
+        <td>${escaparHtml(registro.observacion_docente || '—')}</td>
+        <td>${enlacePlanHtml(registro.evidencia, 'Abrir evidencia') || '—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function renderTablaReporteExtras(extras) {
+  if (!extras.length) return '<p class="hint">No hay puntos adicionales registrados para este grado y sección.</p>';
+  return `<div class="tabla-wrap"><table class="tabla">
+    <thead><tr><th>Fecha</th><th>Tipo de destinatario</th><th>Alumno / Equipo</th><th>Equipo</th><th>Puntos</th><th>Categoría</th><th>Motivo</th><th>Docente</th></tr></thead>
+    <tbody>${extras.map(registro => `
+      <tr>
+        <td>${escaparHtml(registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-PE') : '—')}</td>
+        <td>${registro.tipo_destinatario === 'equipo' ? 'Equipo' : 'Alumno'}</td>
+        <td><b>${escaparHtml(registro.nombre_destinatario || '—')}</b></td>
+        <td>${escaparHtml(registro.nombre_equipo || '—')}</td>
+        <td><b>+${Number(registro.puntos) || 0}</b></td>
+        <td>${escaparHtml(registro.categoria || '—')}</td>
+        <td>${escaparHtml(registro.motivo || '—')}</td>
+        <td>${escaparHtml(registro.docente || '—')}</td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function imprimirReporteCalificaciones() {
+  document.body.classList.add('imprimir-reporte-calificaciones');
+  window.addEventListener('afterprint', () => document.body.classList.remove('imprimir-reporte-calificaciones'), { once: true });
+  window.print();
+}
+
+function imprimirReporteListas() {
+  document.body.classList.add('imprimir-reporte-listas');
+  window.addEventListener('afterprint', () => document.body.classList.remove('imprimir-reporte-listas'), { once: true });
+  window.print();
+}
+
+function inicializarPomodoro() {
+  const guardado = localStorage.getItem('emprende_pomodoro_v1');
+  if (guardado) {
+    try {
+      const datos = JSON.parse(guardado);
+      state.pomodoro.duracionEnfoque = [25, 50].includes(Number(datos.duracionEnfoque)) ? Number(datos.duracionEnfoque) : 25;
+      state.pomodoro.duracionDescanso = state.pomodoro.duracionEnfoque === 50 ? 10 : 5;
+      state.pomodoro.ciclosCompletados = Math.max(0, Number(datos.ciclosCompletados) || 0);
+      if (datos.enMarcha && Number(datos.finalizaEn) > Date.now()) {
+        state.pomodoro.fase = datos.fase === 'descanso' ? 'descanso' : 'enfoque';
+        state.pomodoro.finalizaEn = Number(datos.finalizaEn);
+        state.pomodoro.segundosRestantes = Math.ceil((state.pomodoro.finalizaEn - Date.now()) / 1000);
+        state.pomodoro.intervalo = setInterval(actualizarPomodoro, 1000);
+      }
+    } catch (e) {
+      console.warn('No se pudo restaurar el temporizador Pomodoro guardado.', e);
+      localStorage.removeItem('emprende_pomodoro_v1');
+    }
+  }
+
+  $$('[data-focus-minutes]').forEach(boton => {
+    boton.onclick = () => {
+      if (state.pomodoro.finalizaEn) return;
+      state.pomodoro.duracionEnfoque = Number(boton.dataset.focusMinutes);
+      state.pomodoro.duracionDescanso = Number(boton.dataset.breakMinutes);
+      state.pomodoro.fase = 'enfoque';
+      state.pomodoro.segundosRestantes = state.pomodoro.duracionEnfoque * 60;
+      guardarPomodoro();
+      renderPomodoro();
+    };
+  });
+  $('#btnPomodoroIniciar').onclick = () => {
+    if (state.pomodoro.finalizaEn) {
+      pausarPomodoro();
+    } else {
+      state.pomodoro.finalizaEn = Date.now() + state.pomodoro.segundosRestantes * 1000;
+      state.pomodoro.intervalo = setInterval(actualizarPomodoro, 1000);
+      guardarPomodoro();
+      renderPomodoro();
+    }
+  };
+  $('#btnPomodoroReiniciar').onclick = reiniciarPomodoro;
+  $('#btnPomodoroSaltar').onclick = () => cambiarFasePomodoro(true);
+  renderPomodoro();
+}
+
+function guardarPomodoro() {
+  localStorage.setItem('emprende_pomodoro_v1', JSON.stringify({
+    fase: state.pomodoro.fase,
+    duracionEnfoque: state.pomodoro.duracionEnfoque,
+    ciclosCompletados: state.pomodoro.ciclosCompletados,
+    finalizaEn: state.pomodoro.finalizaEn,
+    enMarcha: Boolean(state.pomodoro.finalizaEn)
+  }));
+}
+
+function actualizarPomodoro() {
+  const ahora = Date.now();
+  if (state.pomodoro.finalizaEn && ahora >= state.pomodoro.finalizaEn) {
+    cambiarFasePomodoro(false);
+    return;
+  }
+  if (state.pomodoro.finalizaEn) {
+    state.pomodoro.segundosRestantes = Math.ceil((state.pomodoro.finalizaEn - ahora) / 1000);
+  }
+  renderPomodoro();
+}
+
+function cambiarFasePomodoro(saltar) {
+  if (state.pomodoro.fase === 'enfoque') {
+    state.pomodoro.ciclosCompletados += 1;
+    state.pomodoro.fase = 'descanso';
+    state.pomodoro.segundosRestantes = state.pomodoro.duracionDescanso * 60;
+    toast(saltar ? 'Bloque de enfoque finalizado; comienza tu descanso.' : '⏰ ¡Bloque completado! Es momento de descansar.');
+  } else {
+    state.pomodoro.fase = 'enfoque';
+    state.pomodoro.segundosRestantes = state.pomodoro.duracionEnfoque * 60;
+    toast(saltar ? 'Descanso terminado; ya puedes iniciar otro bloque.' : '⏰ Descanso terminado; prepara tu siguiente bloque.');
+  }
+  state.pomodoro.finalizaEn = Date.now() + state.pomodoro.segundosRestantes * 1000;
+  if (!state.pomodoro.intervalo) state.pomodoro.intervalo = setInterval(actualizarPomodoro, 1000);
+  guardarPomodoro();
+  renderPomodoro();
+}
+
+function pausarPomodoro() {
+  state.pomodoro.segundosRestantes = Math.max(0, Math.ceil((state.pomodoro.finalizaEn - Date.now()) / 1000));
+  state.pomodoro.finalizaEn = null;
+  if (state.pomodoro.intervalo) clearInterval(state.pomodoro.intervalo);
+  state.pomodoro.intervalo = null;
+  guardarPomodoro();
+  renderPomodoro();
+}
+
+function reiniciarPomodoro() {
+  if (state.pomodoro.intervalo) clearInterval(state.pomodoro.intervalo);
+  state.pomodoro.intervalo = null;
+  state.pomodoro.finalizaEn = null;
+  state.pomodoro.fase = 'enfoque';
+  state.pomodoro.segundosRestantes = state.pomodoro.duracionEnfoque * 60;
+  guardarPomodoro();
+  renderPomodoro();
+}
+
+function renderPomodoro() {
+  const pomodoro = state.pomodoro;
+  const minutos = Math.floor(pomodoro.segundosRestantes / 60);
+  const segundos = pomodoro.segundosRestantes % 60;
+  const corriendo = Boolean(pomodoro.finalizaEn);
+  $('#pomodoroReloj').textContent = `${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}`;
+  $('#pomodoroEstado').textContent = corriendo
+    ? pomodoro.fase === 'enfoque' ? 'Bloque de enfoque en curso' : 'Descanso en curso'
+    : pomodoro.fase === 'enfoque' ? 'Listo para empezar' : 'Descanso listo';
+  $('#pomodoroInstruccion').textContent = pomodoro.fase === 'enfoque'
+    ? 'Elige una tarea concreta para este bloque de concentración.'
+    : 'Aléjate un momento de la pantalla y descansa.';
+  $('#pomodoroCiclos').textContent = String(pomodoro.ciclosCompletados);
+  $('#btnPomodoroIniciar').textContent = corriendo ? '⏸ Pausar' : pomodoro.segundosRestantes < pomodoro.duracionEnfoque * 60 && pomodoro.fase === 'enfoque' ? '▶ Continuar' : '▶ Iniciar';
+  $('#btnPomodoroSaltar').hidden = pomodoro.fase !== 'descanso';
+  $$('[data-focus-minutes]').forEach(boton => {
+    const seleccionado = Number(boton.dataset.focusMinutes) === pomodoro.duracionEnfoque;
+    boton.classList.toggle('active', seleccionado);
+    boton.disabled = corriendo;
+  });
 }
 
 /* =========================================================
@@ -2535,8 +2945,19 @@ function renderMiEquipo() {
   }).join('');
 
   const solicitud = state.solicitudCambioEquipo;
-  const pendiente = String(solicitud?.estado || '').toLowerCase() === 'pendiente';
+  const estadoSolicitudNormalizado = normalizarBusquedaGestion(solicitud?.estado || '');
+  const pendiente = estadoSolicitudNormalizado === 'pendiente';
   const tieneEquipo = Boolean(al.equipo_id || eq.id);
+  const solicitudNoDisponible = state.solicitudCambioDisponible === false;
+  const avisoSolicitud = pendiente
+    ? 'Tu solicitud está pendiente de revisión. No envíes otra mientras el profesor la revisa; las bromas o propuestas inadecuadas serán rechazadas.'
+    : estadoSolicitudNormalizado === 'aprobada'
+      ? 'El último cambio fue aprobado y ya está aplicado. Si necesitas otro cambio, envía una nueva solicitud para que el profesor la revise.'
+      : estadoSolicitudNormalizado === 'rechazada'
+        ? 'La última solicitud fue rechazada y los datos actuales del equipo se mantienen. Puedes proponer un cambio apropiado; el profesor deberá aprobarlo.'
+        : 'Los cambios se aplican solo después de la aprobación del profesor. Las solicitudes quedan registradas con el nombre de quien las envía; las bromas o propuestas inadecuadas serán rechazadas.';
+  const nombreFormulario = pendiente ? solicitud.nombre_solicitado : eq.nombre;
+  const trelloFormulario = pendiente ? solicitud.trello_solicitado : eq.trello_url;
   const estadoSolicitud = solicitud
     ? `<div class="solicitud-estado-alumno ${pendiente ? 'pendiente' : ''}">
         <b>${pendiente ? '⏳ Solicitud pendiente de aprobación docente' : `Estado de la última solicitud: ${escaparHtml(solicitud.estado)}`}</b>
@@ -2556,16 +2977,16 @@ function renderMiEquipo() {
 
     <div class="solicitud-edicion-equipo">
       <h4>✏️ Proponer cambios al nombre o al enlace de Trello</h4>
-      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió.</p>
+      <p class="aviso-solicitud-equipo ${estadoSolicitudNormalizado === 'aprobada' ? 'aprobada' : ''}"><b>${estadoSolicitudNormalizado === 'aprobada' ? '✅ Cambio aprobado:' : pendiente ? '⏳ Solicitud en revisión:' : 'Importante:'}</b> ${escaparHtml(avisoSolicitud)}</p>
       ${!tieneEquipo ? '<p class="hint">Aún no tienes un equipo asignado; solicita ayuda al docente.</p>' : ''}
-      ${solicitudErrorEquipo ? `<p class="error-solicitud-equipo">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
+      ${solicitudErrorEquipo ? `<p class="estado-solicitud-no-disponible">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
       ${estadoSolicitud}
       <form id="formSolicitudCambioEquipo" class="form-solicitud-equipo">
         <label for="solicitudNombreEquipo">Nombre del equipo</label>
-        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(solicitud?.nombre_solicitado || eq.nombre || '')}" ${pendiente || !tieneEquipo ? 'disabled' : ''}>
+        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(nombreFormulario || '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
         <label for="solicitudTrelloEquipo">Enlace del tablero Trello</label>
-        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(solicitud?.trello_solicitado ?? eq.trello_url ?? '')}" ${pendiente || !tieneEquipo ? 'disabled' : ''}>
-        <button type="submit" class="btn btn-primary" ${pendiente || !tieneEquipo ? 'disabled' : ''}>Enviar para aprobación</button>
+        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(trelloFormulario || '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
+        <button type="submit" class="btn btn-primary" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>Enviar para aprobación</button>
       </form>
     </div>
 
@@ -2590,6 +3011,7 @@ let solicitudErrorEquipo = '';
 async function cargarMiEquipo() {
   solicitudErrorEquipo = '';
   state.solicitudCambioEquipo = null;
+  state.solicitudCambioDisponible = true;
   try {
     const data = await apiGet('solicitudes-equipo');
     state.solicitudCambioEquipo = data.solicitud || null;
@@ -2599,7 +3021,10 @@ async function cargarMiEquipo() {
       localStorage.setItem(STORAGE_SESION, JSON.stringify(state.sesion));
     }
   } catch (e) {
-    solicitudErrorEquipo = `No se pudo consultar la solicitud: ${e.message}. Verifica que code.gs esté actualizado y desplegado.`;
+    state.solicitudCambioDisponible = false;
+    solicitudErrorEquipo = /acción inválida/i.test(e.message)
+      ? 'La solicitud de cambios aún no está habilitada. El profesor debe actualizar y volver a implementar Apps Script; por ahora, coordina cualquier cambio directamente con él.'
+      : 'No se pudo comprobar el estado de las solicitudes. Actualiza la página o consulta al docente antes de enviar cambios.';
   }
   renderMiEquipo();
 }
@@ -2617,8 +3042,13 @@ async function enviarSolicitudCambioEquipo(event) {
     toast('✅ Solicitud enviada. El docente debe aprobarla antes de aplicar el cambio.');
     await cargarMiEquipo();
   } catch (e) {
-    toast('❌ No se pudo enviar la solicitud: ' + e.message);
-    boton.disabled = false;
+    if (/acción inválida/i.test(e.message)) {
+      toast('La solicitud aún no está habilitada. Consulta al docente.');
+      await cargarMiEquipo();
+    } else {
+      toast('❌ No se pudo enviar la solicitud. Intenta más tarde o consulta al docente.');
+      boton.disabled = false;
+    }
   }
 }
 
@@ -2629,58 +3059,92 @@ async function cargarMisNotasAlumno() {
   try {
     const data = await apiGet('mi-nota', { correo });
     const porSemana = data.porSemana || [];
-    const tareasPlan = datosFiltrados().sort((a, b) =>
-      normalizarSemana(a.Semana) - normalizarSemana(b.Semana)
-    );
-    const tareasPlanHTML = tareasPlan.length
-      ? `<div class="tabla-wrap">
-          <table class="tabla">
-            <thead><tr><th>Semana</th><th>Tema</th><th>Tarea de mi rol</th><th>Entregable</th></tr></thead>
-            <tbody>${tareasPlan.map(tarea => `
-              <tr>
-                <td><b>${escaparHtml(tarea.Semana)}</b></td>
-                <td>${escaparHtml(tarea.Tema_Semanal)}</td>
-                <td>${escaparHtml(tarea.Tarea_Detallada)}</td>
-                <td>${escaparHtml(tarea.Entregable_Especifico)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`
-      : '<p class="hint">No hay tareas registradas para tu grado y rol.</p>';
+    const semanasCalificadas = porSemana.filter(semana => semana.calificado).length;
+    const semanasHTML = porSemana.length
+      ? porSemana.map(s => {
+        const detalle = Array.isArray(s.detalle) ? s.detalle : [];
+        const total = Number(s.total) || 0;
+        const max = Number(s.max) || 0;
+        const porcentaje = max ? Math.min(100, Math.round(total / max * 100)) : 0;
+        const comentarioGeneral = String(s.comentario_general || '').trim();
+        const comentarios = detalle.filter(criterio => {
+          const comentario = String(criterio.comentario || '').trim();
+          return comentario && comentario !== comentarioGeneral;
+        });
+        const estado = s.calificado ? 'Calificada' : 'Pendiente';
+        const detalleCriterios = detalle.length
+          ? `<ul class="calificacion-criterios">${detalle.map(criterio => {
+            const puntaje = Number(criterio.puntaje) || 0;
+            const maximo = Number(criterio.max) || 0;
+            const porcentajeCriterio = maximo ? Math.min(100, Math.round(puntaje / maximo * 100)) : 0;
+            return `<li class="calificacion-criterio">
+              <div class="criterio-calificacion-cabecera">
+                <b>${escaparHtml(criterio.criterio || 'Criterio')}</b>
+                <strong>${puntaje} <span>/ ${maximo} pts</span></strong>
+              </div>
+              <div class="barra-progreso-calificacion" role="progressbar" aria-valuenow="${porcentajeCriterio}" aria-valuemin="0" aria-valuemax="100">
+                <span style="width:${porcentajeCriterio}%"></span>
+              </div>
+              ${criterio.comentario ? `<p class="comentario-criterio"><b>Comentario:</b> ${escaparHtml(criterio.comentario)}</p>` : ''}
+            </li>`;
+          }).join('')}</ul>`
+          : '<p class="hint">No hay desglose por criterios disponible para esta semana.</p>';
+        const retroalimentacion = s.observacion_pc || comentarioGeneral || comentarios.length
+          ? `<aside class="retroalimentacion-calificacion">
+              <h4>💬 Retroalimentación del docente</h4>
+              ${comentarioGeneral ? `<p>${escaparHtml(comentarioGeneral)}</p>` : ''}
+              ${s.observacion_pc ? `<p>${escaparHtml(s.observacion_pc)}</p>` : ''}
+              ${comentarios.length ? `<p>También hay comentarios en ${comentarios.length === 1 ? 'un criterio' : `${comentarios.length} criterios`} del desglose.</p>` : ''}
+            </aside>`
+          : s.calificado
+            ? '<p class="hint sin-retroalimentacion">El docente no dejó una observación general ni comentarios adicionales. El desglose muestra cómo se asignaron los puntos de cada criterio.</p>'
+            : '<p class="hint sin-retroalimentacion">Aún no hay una calificación ni retroalimentación del docente para esta semana.</p>';
 
-    const semanasHTML = porSemana.map(s => `
-      <div class="entrega-card ${s.calificado ? 'calificada' : 'pendiente'}">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <h4>Semana ${s.semana} ${s.calificado ? `✅ ${s.total}/${s.max} pts` : '⏳ Pendiente de Calificación'}</h4>
-          <span style="font-size:12px;color:#666">${s.observacion_pc ? `PC: "${s.observacion_pc}"` : ''}</span>
-        </div>
-        ${s.calificado && s.detalle ? `
-          <div style="margin-top:8px">
-            ${s.detalle.map(d => `
-              <div class="criterio-mini">
-                <b>${d.criterio}:</b> ${d.puntaje}/${d.max}
-                ${d.comentario ? `<em> — "${d.comentario}"</em>` : ''}
-              </div>`).join('')}
-          </div>
-        ` : '<p class="hint" style="margin-top:4px">Aún no calificada por el docente.</p>'}
-      </div>
-    `).join('');
+        return `<article class="calificacion-semana-card ${s.calificado ? 'calificada' : 'pendiente'}">
+          <header class="calificacion-semana-header">
+            <div>
+              <span class="semana-etiqueta">Semana ${escaparHtml(s.semana)}</span>
+              <span class="estado-calificacion ${s.calificado ? 'estado-calificacion-lista' : ''}">${s.calificado ? '✓ ' : '◷ '}${estado}</span>
+            </div>
+            <div class="puntaje-semana">
+              <strong>${total}<span> / ${max} pts</span></strong>
+              <small>${s.calificado ? `${porcentaje}% de los puntos` : 'Pendiente de evaluación'}</small>
+            </div>
+          </header>
+          ${s.calificado ? `<div class="barra-progreso-calificacion resumen-progreso" role="progressbar" aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100"><span style="width:${porcentaje}%"></span></div>` : ''}
+          <section class="desglose-calificacion">
+            <h4>¿Cómo se obtuvo esta calificación?</h4>
+            <p class="hint">La nota se calcula sumando los puntos asignados en cada criterio de la rúbrica.</p>
+            ${detalleCriterios}
+          </section>
+          ${retroalimentacion}
+        </article>`;
+      }).join('')
+      : '<div class="estado-vacio-calificaciones"><span>📝</span><h3>Aún no hay semanas para mostrar</h3><p>Cuando se registren evaluaciones, aquí verás el puntaje por semana y la retroalimentación del docente.</p></div>';
 
     cont.innerHTML = `
-      <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-        <div class="posicion-destacada" style="flex:1">
-          <div class="num">${data.totalGeneral || 0}</div>
-          <div class="lbl">Puntos Totales Acumulados (XP)</div>
+      <div class="resumen-calificaciones">
+        <div class="resumen-calificacion-card">
+          <span class="resumen-calificacion-icon">🏅</span>
+          <div><strong>${Number(data.totalBase) || 0}</strong><span>Puntos de calificaciones</span></div>
         </div>
-        <div class="posicion-destacada" style="flex:1;background:linear-gradient(135deg,#e8f0fe,#fff);border-color:#1a73e8">
-          <div class="num" style="color:#1a73e8">${data.porcentaje || 0}%</div>
-          <div class="lbl">Porcentaje de Rendimiento General</div>
+        <div class="resumen-calificacion-card">
+          <span class="resumen-calificacion-icon">⚡</span>
+          <div><strong>${Number(data.xpExtraTotal) || 0}</strong><span>Puntos extra</span></div>
+        </div>
+        <div class="resumen-calificacion-card resumen-calificacion-principal">
+          <span class="resumen-calificacion-icon">📊</span>
+          <div><strong>${Number(data.porcentaje) || 0}%</strong><span>Rendimiento acumulado</span></div>
+        </div>
+        <div class="resumen-calificacion-card">
+          <span class="resumen-calificacion-icon">📚</span>
+          <div><strong>${semanasCalificadas}<small> / ${porSemana.length}</small></strong><span>Semanas calificadas</span></div>
         </div>
       </div>
-      <h3 style="margin-bottom:12px;color:var(--azul-oscuro)">📋 Mi matriz curricular y tareas asignadas</h3>
-      ${tareasPlanHTML}
-      <h3 style="margin-bottom:12px;color:var(--azul-oscuro)">Detalle Semanal de Calificaciones:</h3>
-      ${semanasHTML}
+      <div class="historial-calificaciones-heading">
+        <div><h3>Historial de calificaciones</h3><p class="hint">Consulta el desglose de cada semana para entender tu puntaje y leer la retroalimentación.</p></div>
+      </div>
+      <div class="historial-calificaciones">${semanasHTML}</div>
     `;
 
   } catch (e) {
@@ -2906,7 +3370,8 @@ function actualizarOpcionesAlumnoNuevoEquipo(rol) {
    ========================================================= */
 function renderPlan() {
   const esDocente = state.sesion?.tipo === 'docente';
-  let d = datosFiltrados();
+  const esAlumno = state.sesion?.tipo === 'alumno';
+  let d;
   if (esDocente) {
     const grado = $('#planFiltroGrado').value;
     const rol = $('#planFiltroRol').value;
@@ -2914,19 +3379,47 @@ function renderPlan() {
       (!grado || normalizarGrado(fila.Grado) === normalizarGrado(grado)) &&
       (!rol || rolCoincide(fila.Rol, rol))
     );
+  } else if (esAlumno) {
+    const alumno = state.sesion.alumno || {};
+    const equipo = state.sesion.equipo || {};
+    const grado = alumno.grado || equipo.grado || '';
+    const seccion = alumno.seccion || equipo.seccion || '';
+    d = state.plan.filter(fila =>
+      (!grado || normalizarGrado(fila.Grado) === normalizarGrado(grado)) &&
+      (!seccion || !fila.Seccion || String(fila.Seccion).trim() === String(seccion).trim()) &&
+      (state.planMostrarTodasTareas || rolCoincide(fila.Rol, alumno.rol))
+    );
+    $('#controlesPlanAlumno').style.display = 'block';
+    $('#btnPlanSoloRol').classList.toggle('active', !state.planMostrarTodasTareas);
+    $('#btnPlanSoloRol').classList.toggle('btn-ghost', state.planMostrarTodasTareas);
+    $('#btnPlanTodasTareas').classList.toggle('active', state.planMostrarTodasTareas);
+    $('#btnPlanTodasTareas').classList.toggle('btn-ghost', !state.planMostrarTodasTareas);
+    $('#btnPlanSoloRol').setAttribute('aria-pressed', String(!state.planMostrarTodasTareas));
+    $('#btnPlanTodasTareas').setAttribute('aria-pressed', String(state.planMostrarTodasTareas));
+    $('#planAlumnoAyuda').textContent = state.planMostrarTodasTareas
+      ? 'Las tareas de otros roles se muestran para que sepas cómo apoyar a tus compañeros.'
+      : `Se muestran las tareas asignadas a tu rol: ${alumno.rol || 'sin rol asignado'}.`;
   }
   const columnaRecurso = $('#thPlanRecurso');
   columnaRecurso.textContent = esDocente ? 'Material docente' : 'Guía de aprendizaje';
-  $('#tablaPlan tbody').innerHTML = d.length ? d.map(x => `
+  const filasPlan = [...d].sort((a, b) =>
+    normalizarSemana(a.Semana) - normalizarSemana(b.Semana) ||
+    String(a.Rol || '').localeCompare(String(b.Rol || ''), 'es')
+  );
+  const rolAlumno = state.sesion?.alumno?.rol || '';
+  $('#tablaPlan tbody').innerHTML = filasPlan.length ? filasPlan.map(x => `
     <tr>
-      <td><b>${x.Grado}</b></td>
-      <td style="text-align:center"><b>${x.Semana}</b></td>
-      <td>${x.Tema_Semanal}</td>
-      <td><span class="badge-rol rol-${x.Rol}" style="font-size:10px;padding:2px 6px">${x.Rol}</span></td>
-      <td>${x.Tarea_Detallada}</td>
-      <td>${x.Entregable_Especifico}</td>
-      <td><b>${x.Rol_Backup || '—'}</b></td>
-      <td style="font-size:12px;color:#555">${x.Responsabilidad_Backup || '—'}</td>
+      <td><b>${escaparHtml(x.Grado)}</b></td>
+      <td style="text-align:center"><b>${escaparHtml(x.Semana)}</b></td>
+      <td>${escaparHtml(x.Tema_Semanal)}</td>
+      <td>${String(x.Rol || '').split(/[,;|/]+/).map(rol => rol.trim()).filter(Boolean).map(rol => `
+        <span class="plan-rol-tag ${esAlumno && rol.toUpperCase() === String(rolAlumno).toUpperCase() ? 'plan-rol-propio' : 'plan-rol-companero'}">
+          ${escaparHtml(rol)}${esAlumno && rol.toUpperCase() === String(rolAlumno).toUpperCase() ? ' · tú' : ''}
+        </span>`).join(' ') || '—'}</td>
+      <td>${escaparHtml(x.Tarea_Detallada)}</td>
+      <td>${escaparHtml(x.Entregable_Especifico)}</td>
+      <td><b>${escaparHtml(x.Rol_Backup || '—')}</b></td>
+      <td style="font-size:12px;color:#555">${escaparHtml(x.Responsabilidad_Backup || '—')}</td>
       <td>${enlacePlanHtml(
         esDocente ? x.Link_Presentacion : x.Link_Guia_Aprendizaje,
         esDocente ? 'Abrir presentación' : 'Abrir guía'
@@ -2939,7 +3432,19 @@ function inicializarFiltrosPlan() {
   const filtros = $('#filtrosPlanCurricular');
   if (!filtros) return;
   const esDocente = state.sesion?.tipo === 'docente';
+  const esAlumno = state.sesion?.tipo === 'alumno';
   filtros.style.display = esDocente ? 'flex' : 'none';
+  $('#controlesPlanAlumno').style.display = esAlumno ? 'block' : 'none';
+  if (esAlumno) {
+    $('#btnPlanSoloRol').onclick = () => {
+      state.planMostrarTodasTareas = false;
+      renderPlan();
+    };
+    $('#btnPlanTodasTareas').onclick = () => {
+      state.planMostrarTodasTareas = true;
+      renderPlan();
+    };
+  }
   if (!esDocente) return;
 
   const grados = [...new Set(state.plan.map(fila => String(fila.Grado || '').trim()).filter(Boolean))]
@@ -3208,6 +3713,7 @@ function abrirModalGenerico({ title, campos, onSave }) {
 async function init() {
   $('#btnLogout').addEventListener('click', cerrarSesion);
   $('#btnNuevaFrase').addEventListener('click', ponerFraseMotivadoraAleatoria);
+  inicializarPomodoro();
 
   // Modales
   $('#modal').addEventListener('click', e => {
@@ -3310,40 +3816,9 @@ async function arrancarApp() {
   actualizarSelectoresSemana();
   inicializarFiltrosPlan();
 
-  // Filtros de topbar
-  const grados = [...new Set(state.plan.map(f => f.Grado))].sort();
-  $('#filtroGrado').innerHTML = '<option value="">Todos los grados</option>' +
-    grados.map(g => `<option value="${g}">${g}</option>`).join('');
-
-  if (state.sesion.tipo === 'docente') {
-    try {
-      const login = await apiGet('login', { correo: state.sesion.correo });
-      const secs = login.secciones || [];
-      $('#filtroSeccion').innerHTML = '<option value="">Todas las secciones</option>' +
-        secs.map(s => `<option value="${s}">${s}</option>`).join('');
-    } catch (e) {}
-  } else if (state.sesion.alumno?.seccion) {
-    $('#filtroSeccion').innerHTML =
-      `<option value="${state.sesion.alumno.seccion}">Sección ${state.sesion.alumno.seccion}</option>`;
-    $('#filtroSeccion').value = state.sesion.alumno.seccion;
-  }
-
   // Listeners de navegación
   $$('.menu-item').forEach(b => b.addEventListener('click', () => navegar(b.dataset.view)));
   $('#toggleSidebar').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
-
-  $('#filtroSeccion').onchange = () => {
-    if ($('#view-dashboard').classList.contains('active')) {
-      if (state.sesion.tipo === 'docente') renderDashboardDocente();
-    }
-    if ($('#view-ranking').classList.contains('active')) cargarRanking();
-    if ($('#view-ranking-individual').classList.contains('active')) cargarRankingIndividual();
-  };
-
-  $('#filtroGrado').onchange = () => {
-    if ($('#view-dashboard').classList.contains('active') && state.sesion.tipo === 'docente') renderDashboardDocente();
-    if ($('#view-plan').classList.contains('active')) renderPlan();
-  };
 
   $('#btnRefresh').onclick = async () => {
     await cargarPlan();

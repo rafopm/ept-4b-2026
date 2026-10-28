@@ -30,7 +30,10 @@
               <h3 id="solicitudesEquipoTitulo">📝 Solicitudes de cambio de equipo</h3>
               <p class="hint">Revisa quién propone cada cambio. El nombre y el enlace solo se actualizan cuando los apruebas.</p>
             </div>
-            <span id="solicitudesEquipoContador" class="badge-solicitudes">0 pendientes</span>
+            <div class="toolbar">
+              <span id="solicitudesEquipoContador" class="badge-solicitudes">Cargando...</span>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnRecargarSolicitudesEquipo">🔄 Actualizar solicitudes</button>
+            </div>
           </div>
           <div id="solicitudesEquipoLista" aria-live="polite">
             <p class="hint">Cargando solicitudes...</p>

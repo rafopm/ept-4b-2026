@@ -14,6 +14,7 @@ import RankingView from './components/RankingView.vue'
 import RankingIndividualView from './components/RankingIndividualView.vue'
 import PlanView from './components/PlanView.vue'
 import RecursosView from './components/RecursosView.vue'
+import TecnicasEstudioView from './components/TecnicasEstudioView.vue'
 import AcercaView from './components/AcercaView.vue'
 import AppModals from './components/AppModals.vue'
 </script>
@@ -36,6 +37,7 @@ import AppModals from './components/AppModals.vue'
       <RankingIndividualView />
       <PlanView />
       <RecursosView />
+      <TecnicasEstudioView />
       <AcercaView />
     </main>
   </div>

@@ -1,17 +1,5 @@
 <template>
 <section class="view active" id="view-dashboard">
-      <!-- Tarjeta Motivacional -->
-      <div class="card card-motivacional" id="cardMotivacional">
-        <div class="motivacional-content">
-          <div class="motivacional-icon">💡</div>
-          <div>
-            <blockquote id="textoFraseMotivadora"></blockquote>
-            <cite id="autorFraseMotivadora"></cite>
-          </div>
-        </div>
-        <button class="btn btn-ghost btn-sm" id="btnNuevaFrase" title="Ver otra frase">✨ Otra frase</button>
-      </div>
-
       <!-- DASHBOARD ALUMNO: VISTA AUTOMATIZADA POR ROL -->
       <div id="dashboardAlumnoContainer" class="rol-alumno" style="display:none">
         
