@@ -22,6 +22,17 @@ let state = {
   alumnos: [],
   solicitudesCambioEquipo: [],
   solicitudCambioEquipo: null,
+  reporteCalificaciones: null,
+  tipoReporteCalificaciones: 'entregas',
+  pomodoro: {
+    fase: 'enfoque',
+    duracionEnfoque: 25,
+    duracionDescanso: 5,
+    segundosRestantes: 25 * 60,
+    finalizaEn: null,
+    ciclosCompletados: 0,
+    intervalo: null
+  },
   entregas: [],
   evidencias: [],
   puntosExtra: [],
@@ -294,6 +305,7 @@ const TITULOS = {
   'ranking-individual': 'Ranking Individual XP',
   plan: 'Matriz Curricular (Plan Data)',
   recursos: 'Centro de Recursos y Herramientas',
+  'tecnicas-estudio': 'Técnicas de Estudio',
   acerca: 'Acerca de'
 };
 
@@ -314,7 +326,10 @@ function navegar(view) {
   if (view === 'calificacion-agil') inicializarCalificacionAgil();
   if (view === 'gestion-equipos') cargarGestion();
   if (view === 'gamificacion') cargarGamificacion();
-  if (view === 'reportes') inicializarReportes();
+  if (view === 'reportes') {
+    inicializarReportes();
+    cargarReporteCalificaciones();
+  }
   if (view === 'sorteo') inicializarSorteo();
   if (view === 'ranking') cargarRanking();
   if (view === 'ranking-individual') cargarRankingIndividual();
@@ -322,6 +337,7 @@ function navegar(view) {
   if (view === 'mis-notas') cargarMisNotasAlumno();
   if (view === 'plan') renderPlan();
   if (view === 'recursos') inicializarRecursos();
+  if (view === 'tecnicas-estudio') renderPomodoro();
 
   if (window.innerWidth < 900) $('#sidebar').classList.remove('open');
 }
@@ -2086,7 +2102,7 @@ function inicializarReportes() {
 
   $('#reporteFiltroEquipo').onchange = renderReporteImprimible;
   $('#checkOcultarDatosSensibles').onchange = renderReporteImprimible;
-  $('#btnImprimirReporte').onclick = () => window.print();
+  $('#btnImprimirReporte').onclick = imprimirReporteListas;
 
   renderReporteImprimible();
 }
@@ -2167,6 +2183,315 @@ function renderReporteImprimible() {
         ${tablasEq}
       </div>`;
   }).join('');
+}
+
+async function cargarReporteCalificaciones() {
+  const estado = $('#reporteCalificacionesEstado');
+  const botonImprimir = $('#btnImprimirCalificaciones');
+  estado.textContent = 'Cargando calificaciones y puntos adicionales...';
+  botonImprimir.disabled = true;
+  try {
+    const data = await apiGet('reporte-calificaciones');
+    state.reporteCalificaciones = {
+      calificaciones: Array.isArray(data.calificaciones) ? data.calificaciones : [],
+      puntosExtra: Array.isArray(data.puntos_extra) ? data.puntos_extra : [],
+      actualizado: data.actualizado || ''
+    };
+    inicializarFiltrosReporteCalificaciones();
+    estado.textContent = 'Datos actualizados. Selecciona un grado y una sección para consultar o imprimir el reporte.';
+    renderReporteCalificaciones();
+  } catch (e) {
+    state.reporteCalificaciones = null;
+    $('#reporteCalificacionesImprimible').style.display = 'none';
+    estado.textContent = /reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)
+      ? 'El Apps Script conectado aún no tiene el endpoint de reportes. Actualiza y vuelve a implementar code.gs para consultar las calificaciones detalladas.'
+      : `No se pudo cargar el reporte: ${e.message}`;
+  }
+}
+
+function inicializarFiltrosReporteCalificaciones() {
+  const datos = state.reporteCalificaciones;
+  const equipos = state.equipos;
+  const alumnos = state.alumnos;
+  const calificaciones = datos?.calificaciones || [];
+  const extras = datos?.puntosExtra || [];
+  const grados = [...new Set([
+    ...equipos.map(e => String(e.grado || '').trim()),
+    ...alumnos.map(a => String(a.grado || '').trim()),
+    ...calificaciones.map(c => String(c.grado || '').trim()),
+    ...extras.map(x => String(x.grado || '').trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+
+  $('#calificacionesFiltroGrado').innerHTML = '<option value="">-- Selecciona un grado --</option>' +
+    grados.map(grado => `<option value="${escaparHtml(grado)}">${escaparHtml(grado)}</option>`).join('');
+  $('#calificacionesFiltroSeccion').innerHTML = '<option value="">-- Primero elige grado --</option>';
+  $('#calificacionesFiltroSeccion').disabled = true;
+  $('#calificacionesFiltroGrado').onchange = () => {
+    const grado = $('#calificacionesFiltroGrado').value;
+    const gradoNormalizado = normalizarGrado(grado);
+    const secciones = [...new Set([
+      ...equipos.filter(e => normalizarGrado(e.grado) === gradoNormalizado).map(e => String(e.seccion || '').trim()),
+      ...alumnos.filter(a => normalizarGrado(a.grado) === gradoNormalizado).map(a => String(a.seccion || '').trim()),
+      ...calificaciones.filter(c => normalizarGrado(c.grado) === gradoNormalizado).map(c => String(c.seccion || '').trim()),
+      ...extras.filter(x => normalizarGrado(x.grado) === gradoNormalizado).map(x => String(x.seccion || '').trim())
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    $('#calificacionesFiltroSeccion').innerHTML = '<option value="">-- Selecciona una sección --</option>' +
+      secciones.map(seccion => `<option value="${escaparHtml(seccion)}">${escaparHtml(seccion)}</option>`).join('');
+    $('#calificacionesFiltroSeccion').disabled = !grado || !secciones.length;
+    renderReporteCalificaciones();
+  };
+  $('#calificacionesFiltroSeccion').onchange = renderReporteCalificaciones;
+
+  $('#btnReporteEntregas').onclick = () => {
+    state.tipoReporteCalificaciones = 'entregas';
+    actualizarTabsReporteCalificaciones();
+    renderReporteCalificaciones();
+  };
+  $('#btnReportePuntosExtra').onclick = () => {
+    state.tipoReporteCalificaciones = 'extras';
+    actualizarTabsReporteCalificaciones();
+    renderReporteCalificaciones();
+  };
+  $('#btnImprimirCalificaciones').onclick = imprimirReporteCalificaciones;
+  actualizarTabsReporteCalificaciones();
+}
+
+function actualizarTabsReporteCalificaciones() {
+  const entregasActivas = state.tipoReporteCalificaciones === 'entregas';
+  $('#btnReporteEntregas').classList.toggle('active', entregasActivas);
+  $('#btnReporteEntregas').classList.toggle('btn-ghost', !entregasActivas);
+  $('#btnReporteEntregas').setAttribute('aria-pressed', String(entregasActivas));
+  $('#btnReportePuntosExtra').classList.toggle('active', !entregasActivas);
+  $('#btnReportePuntosExtra').classList.toggle('btn-ghost', entregasActivas);
+  $('#btnReportePuntosExtra').setAttribute('aria-pressed', String(!entregasActivas));
+}
+
+function renderReporteCalificaciones() {
+  const salida = $('#reporteCalificacionesImprimible');
+  const grado = $('#calificacionesFiltroGrado').value;
+  const seccion = $('#calificacionesFiltroSeccion').value;
+  const estado = $('#reporteCalificacionesEstado');
+  if (!state.reporteCalificaciones || !grado || !seccion) {
+    salida.style.display = 'none';
+    $('#btnImprimirCalificaciones').disabled = true;
+    if (state.reporteCalificaciones && !grado) estado.textContent = 'Selecciona un grado y una sección para consultar o imprimir el reporte.';
+    else if (state.reporteCalificaciones && grado && !seccion) estado.textContent = 'Selecciona una sección para ver el detalle.';
+    return;
+  }
+
+  const gradoNormalizado = normalizarGrado(grado);
+  const calificaciones = state.reporteCalificaciones.calificaciones.filter(registro =>
+    normalizarGrado(registro.grado) === gradoNormalizado &&
+    String(registro.seccion || '').trim() === seccion
+  );
+  const extras = state.reporteCalificaciones.puntosExtra.filter(registro =>
+    normalizarGrado(registro.grado) === gradoNormalizado &&
+    String(registro.seccion || '').trim() === seccion
+  );
+  const mostrandoEntregas = state.tipoReporteCalificaciones === 'entregas';
+  const cantidad = mostrandoEntregas ? calificaciones.length : extras.length;
+  const puntos = mostrandoEntregas
+    ? calificaciones.reduce((suma, registro) => suma + (Number(registro.puntaje) || 0), 0)
+    : extras.reduce((suma, registro) => suma + (Number(registro.puntos) || 0), 0);
+
+  salida.style.display = '';
+  $('#btnImprimirCalificaciones').disabled = false;
+  $('#reporteCalificacionesFecha').textContent = `Fecha: ${new Date().toLocaleDateString('es-PE')}`;
+  $('#reporteCalificacionesSubtitulo').textContent =
+    `${mostrandoEntregas ? 'Calificaciones por entrega' : 'Puntos adicionales'} · ${grado} · Sección ${seccion}`;
+  $('#reporteCalificacionesResumen').innerHTML = `
+    <div><b>${cantidad}</b><span>${mostrandoEntregas ? 'evaluaciones' : 'bonificaciones registradas'}</span></div>
+    <div><b>${puntos}</b><span>${mostrandoEntregas ? 'puntos asignados' : 'puntos adicionales'}</span></div>
+    <div><b>${grado}</b><span>Grado</span></div>
+    <div><b>${escaparHtml(seccion)}</b><span>Sección</span></div>`;
+
+  $('#reporteCalificacionesContenido').innerHTML = mostrandoEntregas
+    ? renderTablaReporteEntregas(calificaciones)
+    : renderTablaReporteExtras(extras);
+  estado.textContent = `${cantidad} ${mostrandoEntregas ? 'evaluaciones' : 'registros de puntos extra'} para ${grado}, sección ${seccion}.`;
+}
+
+function renderTablaReporteEntregas(calificaciones) {
+  if (!calificaciones.length) return '<p class="hint">No hay calificaciones por entrega para este grado y sección.</p>';
+  return `<div class="tabla-wrap"><table class="tabla">
+    <thead><tr>
+      <th>Fecha</th><th>Semana</th><th>Tipo</th><th>Estudiante / Equipo</th><th>Rol</th>
+      <th>Puntaje</th><th>Detalle por criterio</th><th>Observación docente</th><th>Evidencia</th>
+    </tr></thead>
+    <tbody>${calificaciones.map(registro => {
+      const criterios = (registro.criterios || []).map(criterio =>
+        `<div class="reporte-criterio"><b>${escaparHtml(criterio.nombre)}</b>: ${Number(criterio.puntaje) || 0}/${Number(criterio.maximo) || 0}${criterio.comentario ? `<br><small>${escaparHtml(criterio.comentario)}</small>` : ''}</div>`
+      ).join('');
+      const fecha = registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-PE') : '—';
+      return `<tr>
+        <td>${escaparHtml(fecha)}</td>
+        <td>${registro.semana === null ? '—' : escaparHtml(registro.semana)}</td>
+        <td>${registro.tipo === 'grupal' ? 'Grupal' : 'Individual'}</td>
+        <td><b>${escaparHtml(registro.tipo === 'grupal' ? registro.nombre_equipo : registro.nombre_alumno)}</b><br><small>${escaparHtml(registro.tipo === 'grupal' ? registro.equipo_id : registro.correo_alumno)}</small></td>
+        <td>${escaparHtml(registro.rol || '—')}</td>
+        <td><b>${Number(registro.puntaje) || 0}/${Number(registro.maximo) || 0}</b></td>
+        <td>${criterios || '—'}</td>
+        <td>${escaparHtml(registro.observacion_docente || '—')}</td>
+        <td>${enlacePlanHtml(registro.evidencia, 'Abrir evidencia') || '—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function renderTablaReporteExtras(extras) {
+  if (!extras.length) return '<p class="hint">No hay puntos adicionales registrados para este grado y sección.</p>';
+  return `<div class="tabla-wrap"><table class="tabla">
+    <thead><tr><th>Fecha</th><th>Tipo de destinatario</th><th>Alumno / Equipo</th><th>Equipo</th><th>Puntos</th><th>Categoría</th><th>Motivo</th><th>Docente</th></tr></thead>
+    <tbody>${extras.map(registro => `
+      <tr>
+        <td>${escaparHtml(registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-PE') : '—')}</td>
+        <td>${registro.tipo_destinatario === 'equipo' ? 'Equipo' : 'Alumno'}</td>
+        <td><b>${escaparHtml(registro.nombre_destinatario || '—')}</b></td>
+        <td>${escaparHtml(registro.nombre_equipo || '—')}</td>
+        <td><b>+${Number(registro.puntos) || 0}</b></td>
+        <td>${escaparHtml(registro.categoria || '—')}</td>
+        <td>${escaparHtml(registro.motivo || '—')}</td>
+        <td>${escaparHtml(registro.docente || '—')}</td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function imprimirReporteCalificaciones() {
+  document.body.classList.add('imprimir-reporte-calificaciones');
+  window.addEventListener('afterprint', () => document.body.classList.remove('imprimir-reporte-calificaciones'), { once: true });
+  window.print();
+}
+
+function imprimirReporteListas() {
+  document.body.classList.add('imprimir-reporte-listas');
+  window.addEventListener('afterprint', () => document.body.classList.remove('imprimir-reporte-listas'), { once: true });
+  window.print();
+}
+
+function inicializarPomodoro() {
+  const guardado = localStorage.getItem('emprende_pomodoro_v1');
+  if (guardado) {
+    try {
+      const datos = JSON.parse(guardado);
+      state.pomodoro.duracionEnfoque = [25, 50].includes(Number(datos.duracionEnfoque)) ? Number(datos.duracionEnfoque) : 25;
+      state.pomodoro.duracionDescanso = state.pomodoro.duracionEnfoque === 50 ? 10 : 5;
+      state.pomodoro.ciclosCompletados = Math.max(0, Number(datos.ciclosCompletados) || 0);
+      if (datos.enMarcha && Number(datos.finalizaEn) > Date.now()) {
+        state.pomodoro.fase = datos.fase === 'descanso' ? 'descanso' : 'enfoque';
+        state.pomodoro.finalizaEn = Number(datos.finalizaEn);
+        state.pomodoro.segundosRestantes = Math.ceil((state.pomodoro.finalizaEn - Date.now()) / 1000);
+        state.pomodoro.intervalo = setInterval(actualizarPomodoro, 1000);
+      }
+    } catch (e) {
+      console.warn('No se pudo restaurar el temporizador Pomodoro guardado.', e);
+      localStorage.removeItem('emprende_pomodoro_v1');
+    }
+  }
+
+  $$('[data-focus-minutes]').forEach(boton => {
+    boton.onclick = () => {
+      if (state.pomodoro.finalizaEn) return;
+      state.pomodoro.duracionEnfoque = Number(boton.dataset.focusMinutes);
+      state.pomodoro.duracionDescanso = Number(boton.dataset.breakMinutes);
+      state.pomodoro.fase = 'enfoque';
+      state.pomodoro.segundosRestantes = state.pomodoro.duracionEnfoque * 60;
+      guardarPomodoro();
+      renderPomodoro();
+    };
+  });
+  $('#btnPomodoroIniciar').onclick = () => {
+    if (state.pomodoro.finalizaEn) {
+      pausarPomodoro();
+    } else {
+      state.pomodoro.finalizaEn = Date.now() + state.pomodoro.segundosRestantes * 1000;
+      state.pomodoro.intervalo = setInterval(actualizarPomodoro, 1000);
+      guardarPomodoro();
+      renderPomodoro();
+    }
+  };
+  $('#btnPomodoroReiniciar').onclick = reiniciarPomodoro;
+  $('#btnPomodoroSaltar').onclick = () => cambiarFasePomodoro(true);
+  renderPomodoro();
+}
+
+function guardarPomodoro() {
+  localStorage.setItem('emprende_pomodoro_v1', JSON.stringify({
+    fase: state.pomodoro.fase,
+    duracionEnfoque: state.pomodoro.duracionEnfoque,
+    ciclosCompletados: state.pomodoro.ciclosCompletados,
+    finalizaEn: state.pomodoro.finalizaEn,
+    enMarcha: Boolean(state.pomodoro.finalizaEn)
+  }));
+}
+
+function actualizarPomodoro() {
+  const ahora = Date.now();
+  if (state.pomodoro.finalizaEn && ahora >= state.pomodoro.finalizaEn) {
+    cambiarFasePomodoro(false);
+    return;
+  }
+  if (state.pomodoro.finalizaEn) {
+    state.pomodoro.segundosRestantes = Math.ceil((state.pomodoro.finalizaEn - ahora) / 1000);
+  }
+  renderPomodoro();
+}
+
+function cambiarFasePomodoro(saltar) {
+  if (state.pomodoro.fase === 'enfoque') {
+    state.pomodoro.ciclosCompletados += 1;
+    state.pomodoro.fase = 'descanso';
+    state.pomodoro.segundosRestantes = state.pomodoro.duracionDescanso * 60;
+    toast(saltar ? 'Bloque de enfoque finalizado; comienza tu descanso.' : '⏰ ¡Bloque completado! Es momento de descansar.');
+  } else {
+    state.pomodoro.fase = 'enfoque';
+    state.pomodoro.segundosRestantes = state.pomodoro.duracionEnfoque * 60;
+    toast(saltar ? 'Descanso terminado; ya puedes iniciar otro bloque.' : '⏰ Descanso terminado; prepara tu siguiente bloque.');
+  }
+  state.pomodoro.finalizaEn = Date.now() + state.pomodoro.segundosRestantes * 1000;
+  if (!state.pomodoro.intervalo) state.pomodoro.intervalo = setInterval(actualizarPomodoro, 1000);
+  guardarPomodoro();
+  renderPomodoro();
+}
+
+function pausarPomodoro() {
+  state.pomodoro.segundosRestantes = Math.max(0, Math.ceil((state.pomodoro.finalizaEn - Date.now()) / 1000));
+  state.pomodoro.finalizaEn = null;
+  if (state.pomodoro.intervalo) clearInterval(state.pomodoro.intervalo);
+  state.pomodoro.intervalo = null;
+  guardarPomodoro();
+  renderPomodoro();
+}
+
+function reiniciarPomodoro() {
+  if (state.pomodoro.intervalo) clearInterval(state.pomodoro.intervalo);
+  state.pomodoro.intervalo = null;
+  state.pomodoro.finalizaEn = null;
+  state.pomodoro.fase = 'enfoque';
+  state.pomodoro.segundosRestantes = state.pomodoro.duracionEnfoque * 60;
+  guardarPomodoro();
+  renderPomodoro();
+}
+
+function renderPomodoro() {
+  const pomodoro = state.pomodoro;
+  const minutos = Math.floor(pomodoro.segundosRestantes / 60);
+  const segundos = pomodoro.segundosRestantes % 60;
+  const corriendo = Boolean(pomodoro.finalizaEn);
+  $('#pomodoroReloj').textContent = `${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}`;
+  $('#pomodoroEstado').textContent = corriendo
+    ? pomodoro.fase === 'enfoque' ? 'Bloque de enfoque en curso' : 'Descanso en curso'
+    : pomodoro.fase === 'enfoque' ? 'Listo para empezar' : 'Descanso listo';
+  $('#pomodoroInstruccion').textContent = pomodoro.fase === 'enfoque'
+    ? 'Elige una tarea concreta para este bloque de concentración.'
+    : 'Aléjate un momento de la pantalla y descansa.';
+  $('#pomodoroCiclos').textContent = String(pomodoro.ciclosCompletados);
+  $('#btnPomodoroIniciar').textContent = corriendo ? '⏸ Pausar' : pomodoro.segundosRestantes < pomodoro.duracionEnfoque * 60 && pomodoro.fase === 'enfoque' ? '▶ Continuar' : '▶ Iniciar';
+  $('#btnPomodoroSaltar').hidden = pomodoro.fase !== 'descanso';
+  $$('[data-focus-minutes]').forEach(boton => {
+    const seleccionado = Number(boton.dataset.focusMinutes) === pomodoro.duracionEnfoque;
+    boton.classList.toggle('active', seleccionado);
+    boton.disabled = corriendo;
+  });
 }
 
 /* =========================================================
@@ -3348,6 +3673,7 @@ function abrirModalGenerico({ title, campos, onSave }) {
 async function init() {
   $('#btnLogout').addEventListener('click', cerrarSesion);
   $('#btnNuevaFrase').addEventListener('click', ponerFraseMotivadoraAleatoria);
+  inicializarPomodoro();
 
   // Modales
   $('#modal').addEventListener('click', e => {
