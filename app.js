@@ -2560,9 +2560,19 @@ function renderMiEquipo() {
   }).join('');
 
   const solicitud = state.solicitudCambioEquipo;
-  const pendiente = String(solicitud?.estado || '').toLowerCase() === 'pendiente';
+  const estadoSolicitudNormalizado = normalizarBusquedaGestion(solicitud?.estado || '');
+  const pendiente = estadoSolicitudNormalizado === 'pendiente';
   const tieneEquipo = Boolean(al.equipo_id || eq.id);
   const solicitudNoDisponible = state.solicitudCambioDisponible === false;
+  const avisoSolicitud = pendiente
+    ? 'Tu solicitud está pendiente de revisión. No envíes otra mientras el profesor la revisa; las bromas o propuestas inadecuadas serán rechazadas.'
+    : estadoSolicitudNormalizado === 'aprobada'
+      ? 'El último cambio fue aprobado y ya está aplicado. Si necesitas otro cambio, envía una nueva solicitud para que el profesor la revise.'
+      : estadoSolicitudNormalizado === 'rechazada'
+        ? 'La última solicitud fue rechazada y los datos actuales del equipo se mantienen. Puedes proponer un cambio apropiado; el profesor deberá aprobarlo.'
+        : 'Los cambios se aplican solo después de la aprobación del profesor. Las solicitudes quedan registradas con el nombre de quien las envía; las bromas o propuestas inadecuadas serán rechazadas.';
+  const nombreFormulario = pendiente ? solicitud.nombre_solicitado : eq.nombre;
+  const trelloFormulario = pendiente ? solicitud.trello_solicitado : eq.trello_url;
   const estadoSolicitud = solicitud
     ? `<div class="solicitud-estado-alumno ${pendiente ? 'pendiente' : ''}">
         <b>${pendiente ? '⏳ Solicitud pendiente de aprobación docente' : `Estado de la última solicitud: ${escaparHtml(solicitud.estado)}`}</b>
@@ -2582,15 +2592,15 @@ function renderMiEquipo() {
 
     <div class="solicitud-edicion-equipo">
       <h4>✏️ Proponer cambios al nombre o al enlace de Trello</h4>
-      <p class="aviso-solicitud-equipo"><b>Importante:</b> El cambio no se aplicará hasta que el profesor lo apruebe. Las solicitudes quedan registradas con el nombre de quien las envió; las bromas o propuestas inadecuadas serán rechazadas.</p>
+      <p class="aviso-solicitud-equipo ${estadoSolicitudNormalizado === 'aprobada' ? 'aprobada' : ''}"><b>${estadoSolicitudNormalizado === 'aprobada' ? '✅ Cambio aprobado:' : pendiente ? '⏳ Solicitud en revisión:' : 'Importante:'}</b> ${escaparHtml(avisoSolicitud)}</p>
       ${!tieneEquipo ? '<p class="hint">Aún no tienes un equipo asignado; solicita ayuda al docente.</p>' : ''}
       ${solicitudErrorEquipo ? `<p class="estado-solicitud-no-disponible">${escaparHtml(solicitudErrorEquipo)}</p>` : ''}
       ${estadoSolicitud}
       <form id="formSolicitudCambioEquipo" class="form-solicitud-equipo">
         <label for="solicitudNombreEquipo">Nombre del equipo</label>
-        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(solicitud?.nombre_solicitado || eq.nombre || '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
+        <input type="text" id="solicitudNombreEquipo" maxlength="80" required value="${escaparHtml(nombreFormulario || '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
         <label for="solicitudTrelloEquipo">Enlace del tablero Trello</label>
-        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(solicitud?.trello_solicitado ?? eq.trello_url ?? '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
+        <input type="url" id="solicitudTrelloEquipo" maxlength="300" placeholder="https://trello.com/b/..." value="${escaparHtml(trelloFormulario || '')}" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>
         <button type="submit" class="btn btn-primary" ${pendiente || !tieneEquipo || solicitudNoDisponible ? 'disabled' : ''}>Enviar para aprobación</button>
       </form>
     </div>
