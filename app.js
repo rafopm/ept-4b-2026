@@ -9,6 +9,10 @@ const STORAGE_TOKEN = 'google_id_token';
 const STORAGE_OFFLINE_PUNTOS = 'emprende_offline_puntos_extra';
 
 let frasesMotivacionales = [];
+let accionesServidorEnCurso = 0;
+let ocultarToastOperacionTimer = null;
+let mensajeToastPendiente = '';
+const solicitudesPostEnCurso = new Map();
 
 let state = {
   sesion: null,
@@ -57,10 +61,53 @@ const $$ = (s, c = document) => [...c.querySelectorAll(s)];
 function toast(msg, ms = 2800) {
   const t = $('#toast');
   if (!t) return;
+  if (accionesServidorEnCurso) {
+    mensajeToastPendiente = msg;
+    return;
+  }
+  mensajeToastPendiente = '';
+  clearTimeout(ocultarToastOperacionTimer);
   t.textContent = msg;
+  t.classList.remove('is-loading');
+  t.removeAttribute('aria-busy');
   t.classList.add('show');
   clearTimeout(t._t);
   t._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function mostrarOperacionEnCurso(mensaje) {
+  const t = $('#toast');
+  if (!t) return;
+  clearTimeout(ocultarToastOperacionTimer);
+  t.textContent = `⏳ ${mensaje}`;
+  t.setAttribute('role', 'status');
+  t.setAttribute('aria-live', 'polite');
+  t.setAttribute('aria-busy', 'true');
+  t.classList.add('show', 'is-loading');
+}
+
+function iniciarOperacionServidor(accion) {
+  accionesServidorEnCurso += 1;
+  mostrarOperacionEnCurso(accion === 'subir-archivo'
+    ? 'Subiendo el archivo a Google Drive. Espera y no vuelvas a pulsar.'
+    : 'Guardando los cambios. Espera y no vuelvas a pulsar.');
+}
+
+function finalizarOperacionServidor() {
+  accionesServidorEnCurso = Math.max(0, accionesServidorEnCurso - 1);
+  if (accionesServidorEnCurso) return;
+
+  ocultarToastOperacionTimer = setTimeout(() => {
+    if (accionesServidorEnCurso) return;
+    const t = $('#toast');
+    if (!t?.classList.contains('is-loading')) return;
+    if (mensajeToastPendiente) {
+      toast(mensajeToastPendiente);
+      return;
+    }
+    t.classList.remove('is-loading', 'show');
+    t.removeAttribute('aria-busy');
+  }, 500);
 }
 
 function invalidarSesionPorToken(error) {
@@ -109,25 +156,45 @@ async function apiGet(accion, params = {}) {
 
 async function apiPost(accion, payload = {}) {
   if (!state.sesion) throw new Error('Sin sesión activa');
+  const claveSolicitud = JSON.stringify([accion, payload]);
+  const solicitudExistente = solicitudesPostEnCurso.get(claveSolicitud);
+  if (solicitudExistente) return solicitudExistente;
+
   const body = {
     accion,
     correo: state.sesion.correo,
     id_token: localStorage.getItem(STORAGE_TOKEN) || '',
     ...payload
   };
-  const resp = await fetch(API_URL, {
-    method: 'POST',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body)
-  });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  const data = await resp.json();
-  if (data.error) {
-    invalidarSesionPorToken(data.error);
-    throw new Error(data.error);
+
+  iniciarOperacionServidor(accion);
+  const solicitud = (async () => {
+    try {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.error) {
+        invalidarSesionPorToken(data.error);
+        throw new Error(data.error);
+      }
+      return data;
+    } finally {
+      finalizarOperacionServidor();
+    }
+  })();
+  solicitudesPostEnCurso.set(claveSolicitud, solicitud);
+  try {
+    return await solicitud;
+  } finally {
+    if (solicitudesPostEnCurso.get(claveSolicitud) === solicitud) {
+      solicitudesPostEnCurso.delete(claveSolicitud);
+    }
   }
-  return data;
 }
 
 function decodificarPayloadToken(token) {
@@ -626,6 +693,8 @@ function verificarEvidenciaCargadaAlumno(semana) {
 
 async function guardarEvidenciaAlumno(e) {
   e.preventDefault();
+  const formulario = e.currentTarget;
+  if (formulario.dataset.enviando === 'true') return;
   const link = $('#inputLinkEvidencia').value.trim();
   const comentario = $('#inputComentarioEvidencia').value.trim();
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
@@ -654,6 +723,7 @@ async function guardarEvidenciaAlumno(e) {
   };
 
   try {
+    formulario.dataset.enviando = 'true';
     $('#btnGuardarEvidencia').disabled = true;
     $('#btnGuardarEvidencia').textContent = '⏳ Guardando...';
 
@@ -669,6 +739,7 @@ async function guardarEvidenciaAlumno(e) {
   } catch (err) {
     toast('❌ No se pudo guardar: ' + mensajeErrorEntrega(err, semana));
   } finally {
+    delete formulario.dataset.enviando;
     $('#btnGuardarEvidencia').disabled = false;
     $('#btnGuardarEvidencia').textContent = '📤 Guardar Enlace';
     verificarEvidenciaCargadaAlumno(semana);
@@ -677,6 +748,8 @@ async function guardarEvidenciaAlumno(e) {
 
 async function subirArchivoDriveAlumno(e) {
   e.preventDefault();
+  const formulario = e.currentTarget;
+  if (formulario.dataset.subiendo === 'true') return;
   const fileInput = $('#inputFileEvidencia');
   const comentario = $('#inputComentarioArchivo').value.trim();
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
@@ -711,8 +784,12 @@ async function subirArchivoDriveAlumno(e) {
   const btnSubir = $('#btnSubirArchivoDrive');
 
   try {
+    formulario.dataset.subiendo = 'true';
     btnSubir.disabled = true;
     progress.style.display = 'block';
+    progress.setAttribute('role', 'status');
+    progress.setAttribute('aria-live', 'polite');
+    progress.textContent = '⏳ Preparando el archivo y subiéndolo a Google Drive. No vuelvas a pulsar el botón.';
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -774,12 +851,16 @@ async function subirArchivoDriveAlumno(e) {
         const mensaje = mensajeErrorEntrega(errApi, semana);
         toast('❌ Error subiendo a Drive: ' + mensaje);
       } finally {
+        delete formulario.dataset.subiendo;
+        btnSubir.disabled = false;
         verificarEvidenciaCargadaAlumno(semana);
         progress.style.display = 'none';
       }
     };
 
     reader.onerror = () => {
+      delete formulario.dataset.subiendo;
+      btnSubir.disabled = false;
       toast('❌ Error leyendo el archivo local');
       progress.style.display = 'none';
       verificarEvidenciaCargadaAlumno(semana);
@@ -788,6 +869,8 @@ async function subirArchivoDriveAlumno(e) {
     reader.readAsDataURL(file);
 
   } catch (err) {
+    delete formulario.dataset.subiendo;
+    btnSubir.disabled = false;
     progress.style.display = 'none';
     verificarEvidenciaCargadaAlumno(semana);
     toast('❌ ' + err.message);
