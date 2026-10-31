@@ -130,6 +130,22 @@ async function apiPost(accion, payload = {}) {
   return data;
 }
 
+function decodificarPayloadToken(token) {
+  const partes = String(token || '').split('.');
+  if (partes.length !== 3 || !partes[1]) {
+    throw new Error('La credencial de Google no tiene un formato válido.');
+  }
+
+  const base64 = partes[1].replace(/-/g, '+').replace(/_/g, '/');
+  if (base64.length % 4 === 1) {
+    throw new Error('La credencial de Google no tiene un formato válido.');
+  }
+
+  const binario = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
+  const bytes = Uint8Array.from(binario, caracter => caracter.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
 /* ============ LOGIN GOOGLE ============ */
 function handleGoogleCredential(response) {
   const errEl = $('#loginError');
@@ -138,7 +154,7 @@ function handleGoogleCredential(response) {
       throw new Error('No se recibió credencial de Google');
     }
     const idToken = response.credential;
-    const payload = JSON.parse(atob(idToken.split('.')[1]));
+    const payload = decodificarPayloadToken(idToken);
     const correo = (payload.email || '').toLowerCase().trim();
     if (!correo) throw new Error('El token no contiene correo');
 
@@ -200,8 +216,7 @@ function cerrarSesion() {
 
 function tokenVencido(token) {
   try {
-    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const exp = JSON.parse(atob(b64)).exp;
+    const exp = decodificarPayloadToken(token).exp;
     return !exp || exp * 1000 < Date.now() + 30000;
   } catch (e) { return true; }
 }
@@ -708,7 +723,7 @@ async function subirArchivoDriveAlumno(e) {
 
         const payload = {
           equipo_id: equipoId,
-          semana: String(semana),
+          semana,
           correo_alumno: correoAlumno,
           rol: alumno.rol || 'CEO',
           nombre_archivo: file.name,
@@ -720,7 +735,7 @@ async function subirArchivoDriveAlumno(e) {
 
         const datosFaltantes = [
           !payload.equipo_id && 'equipo_id',
-          !Number.isInteger(payload.semana) && 'semana',
+          (!Number.isInteger(payload.semana) || payload.semana < 0) && 'semana',
           !payload.correo_alumno && 'correo_alumno',
           !payload.nombre_archivo && 'nombre_archivo',
           !payload.base64_data && 'base64_data'
