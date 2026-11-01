@@ -421,6 +421,10 @@ body.es-alumno .contexto-alumno { display: inline; }
   background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.03);
   display: flex; flex-direction: column; justify-content: space-between;
 }
+.alumno-eval-card.con-entrega {
+  border-color: #86efac; background: #f0fdf4;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, .12);
+}
 .alumno-eval-header {
   display: flex; justify-content: space-between; align-items: flex-start;
   margin-bottom: 10px;
@@ -471,6 +475,11 @@ body.es-alumno .contexto-alumno { display: inline; }
   display: flex; align-items: center; gap: 14px; margin-top: 24px;
   padding-top: 18px; border-top: 2px solid #edf0f5; flex-wrap: wrap;
 }
+.acciones-guardar-individual {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid #edf0f5;
+}
+.acciones-guardar-individual .status-msg { font-size: 12px; }
 .status-msg { font-size: 13px; font-weight: 600; }
 
 /* Gestión de grupos y asignación de alumnos */

@@ -1296,7 +1296,7 @@ function renderPanelCalificacionAgil() {
       const comentarioPrevio = escaparHtml(prevInd?.comentario || '');
 
       return `
-        <div class="alumno-eval-card" data-correo="${escaparHtml(al.correo)}" data-equipo-id="${escaparHtml(al.equipo_id || '')}">
+        <div class="alumno-eval-card${evAl?.link_evidencia ? ' con-entrega' : ''}" data-correo="${escaparHtml(al.correo)}" data-equipo-id="${escaparHtml(al.equipo_id || '')}">
           <div>
             <div class="alumno-eval-header">
               <div>
@@ -1388,6 +1388,12 @@ function renderPanelCalificacionAgil() {
           <div style="margin-top:10px">
             <input type="text" class="input-obs-ind input-full" placeholder="🔍 Observación PC: evidencia mostrada por el alumno" value="${prevInd?.observacion_pc || ''}" style="font-size:12px;padding:6px">
           </div>
+          <div class="acciones-guardar-individual">
+            <button type="button" class="btn btn-success btn-sm" onclick="guardarCalificacionIndividual(this)">
+              💾 Guardar calificación individual
+            </button>
+            <span class="status-msg" aria-live="polite">${prevInd?.calificado ? '✅ Calificación guardada' : ''}</span>
+          </div>
         </div>`;
     }).join('');
   }
@@ -1419,6 +1425,89 @@ function aplicarNotaCeroIndividual(button) {
   toast(`✅ Nota 0 aplicada a ${nombre}. Guarda las calificaciones para registrarla.`);
 }
 
+function recolectarEvaluacionIndividual(card, semana) {
+  const criterios = [...card.querySelectorAll('tbody tr')].map(tr => ({
+    criterio_id: tr.dataset.criterio,
+    puntaje: Number(tr.querySelector('.input-puntaje-ind').value) || 0
+  }));
+  const correo = card.dataset.correo;
+  const equipoId = card.dataset.equipoId;
+
+  return {
+    correo_alumno: correo,
+    equipo_id: equipoId,
+    criterios,
+    comentario: card.querySelector('.input-feedback-ind').value.trim(),
+    observacion_pc: card.querySelector('.input-obs-ind').value.trim(),
+    bonus_backup: card.querySelector('.check-backup-bonus').checked
+      ? { puntos: 10, motivo: `Asumió Rol Backup en Semana ${semana}` }
+      : null
+  };
+}
+
+async function guardarCalificacionIndividual(button) {
+  const card = button.closest('.alumno-eval-card');
+  if (!card || !datosCalificacionAgilActual) return;
+
+  const { semana } = datosCalificacionAgilActual;
+  const evaluacion = recolectarEvaluacionIndividual(card, semana);
+  const status = card.querySelector('.acciones-guardar-individual .status-msg');
+  if (!evaluacion.correo_alumno || !evaluacion.equipo_id) {
+    if (status) status.textContent = '❌ Falta el correo o equipo del alumno.';
+    toast('❌ No se puede guardar: el alumno debe tener correo y equipo asignados.');
+    return;
+  }
+  if (!evaluacion.criterios.length) {
+    if (status) status.textContent = '❌ No hay criterios individuales para guardar.';
+    toast('❌ No hay criterios individuales para guardar.');
+    return;
+  }
+
+  try {
+    button.disabled = true;
+    if (status) status.textContent = '⏳ Guardando...';
+    const entregaId = `${evaluacion.equipo_id}_SEM_${semana}`;
+    try {
+      await apiPost('guardar-calificacion-semana', {
+        equipo_id: evaluacion.equipo_id,
+        semana,
+        entrega_id: entregaId,
+        calificacion_grupal: null,
+        calificaciones_individuales: [evaluacion]
+      });
+    } catch (error) {
+      if (!/acción inválida/i.test(error.message)) throw error;
+      await apiPost('calificar-individual', {
+        entrega_id: entregaId,
+        equipo_id: evaluacion.equipo_id,
+        correo_alumno: evaluacion.correo_alumno,
+        criterios: evaluacion.criterios,
+        comentario: evaluacion.comentario,
+        observacion_pc: evaluacion.observacion_pc
+      });
+      if (evaluacion.bonus_backup) {
+        await apiPost('otorgar-puntos-extra', {
+          tipo_destinatario: 'alumno',
+          destinatario_id: evaluacion.correo_alumno,
+          puntos: evaluacion.bonus_backup.puntos,
+          motivo: evaluacion.bonus_backup.motivo,
+          categoria: 'backup'
+        });
+      }
+    }
+
+    if (status) status.textContent = '✅ Calificación guardada';
+    toast(`✅ Calificación de ${card.querySelector('.alumno-nombre-tit')?.textContent || 'alumno'} guardada.`);
+    cargarRanking();
+    cargarRankingIndividual();
+  } catch (error) {
+    if (status) status.textContent = `❌ Error al guardar: ${error.message}`;
+    toast('❌ Error al guardar la calificación: ' + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function guardarCalificacionAgilCompleta() {
   if (!datosCalificacionAgilActual) return;
   const { equipo_id, semana } = datosCalificacionAgilActual;
@@ -1436,26 +1525,7 @@ async function guardarCalificacionAgilCompleta() {
 
   // 2. Recolectar Individuales
   const cardsAlumnos = $$('.alumno-eval-card');
-  const evaluacionesIndividuales = cardsAlumnos.map(card => {
-    const correo = card.dataset.correo;
-    const filasI = card.querySelectorAll('tbody tr');
-    const criterios = [...filasI].map(tr => ({
-      criterio_id: tr.dataset.criterio,
-      puntaje: Number(tr.querySelector('.input-puntaje-ind').value) || 0
-    }));
-    const obsInd = card.querySelector('.input-obs-ind').value.trim();
-    const comentario = card.querySelector('.input-feedback-ind').value.trim();
-    const asumioBackup = card.querySelector('.check-backup-bonus').checked;
-
-    return {
-      correo_alumno: correo,
-      equipo_id: card.dataset.equipoId,
-      criterios,
-      comentario,
-      observacion_pc: obsInd,
-      bonus_backup: asumioBackup ? { puntos: 10, motivo: `Asumió Rol Backup en Semana ${semana}` } : null
-    };
-  });
+  const evaluacionesIndividuales = cardsAlumnos.map(card => recolectarEvaluacionIndividual(card, semana));
   if (evaluacionesIndividuales.some(ind => !ind.correo_alumno || !ind.equipo_id)) {
     toast('❌ No se puede guardar: cada alumno debe tener correo y equipo asignados.');
     return;
@@ -2369,9 +2439,13 @@ async function cargarReporteCalificaciones() {
   } catch (e) {
     state.reporteCalificaciones = null;
     $('#reporteCalificacionesImprimible').style.display = 'none';
-    estado.textContent = /reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)
-      ? 'La URL de Apps Script configurada no reconoce el endpoint de reportes. Verifica que public/config.js apunte a la implementación actualizada de code.gs y vuelve a publicar el frontend.'
-      : `No se pudo cargar el reporte: ${e.message}`;
+    if (/token/i.test(e.message) && /(expir|inv[aá]lid|400|no llegó)/i.test(e.message)) {
+      estado.textContent = 'La sesión de Google expiró o ya no es válida. Vuelve a iniciar sesión con el botón de Google y abre nuevamente el reporte.';
+    } else if (/reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)) {
+      estado.textContent = 'La URL de Apps Script configurada no reconoce el endpoint de reportes. Verifica que public/config.js apunte a la implementación actualizada de code.gs y vuelve a publicar el frontend.';
+    } else {
+      estado.textContent = `No se pudo cargar el reporte: ${e.message}`;
+    }
   }
 }
 
