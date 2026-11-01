@@ -558,26 +558,42 @@ async function cargarPlan() {
 
 async function cargarRanking() {
   try {
-    const seccion = state.sesion?.tipo === 'alumno'
-      ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-      : '';
-    const data = await apiGet('ranking', seccion ? { seccion } : {});
+    const alumno = state.sesion?.tipo === 'alumno' ? state.sesion.alumno || {} : {};
+    const equipo = state.sesion?.equipo || {};
+    const filtrosAlumno = {
+      grado: alumno.grado || equipo.grado || '',
+      seccion: alumno.seccion || equipo.seccion || ''
+    };
+    if (state.sesion?.tipo === 'alumno' && (!filtrosAlumno.grado || !filtrosAlumno.seccion)) {
+      throw new Error('No se pudo determinar tu grado y sección para cargar el ranking.');
+    }
+    const data = await apiGet('ranking', state.sesion?.tipo === 'alumno' ? filtrosAlumno : {});
     state.ranking = data.ranking || [];
     renderRanking();
   } catch (e) {
+    state.ranking = [];
+    renderRanking();
     toast('❌ Ranking: ' + e.message);
   }
 }
 
 async function cargarRankingIndividual() {
   try {
-    const seccion = state.sesion?.tipo === 'alumno'
-      ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-      : '';
-    const data = await apiGet('ranking-individual', seccion ? { seccion } : {});
+    const alumno = state.sesion?.tipo === 'alumno' ? state.sesion.alumno || {} : {};
+    const equipo = state.sesion?.equipo || {};
+    const filtrosAlumno = {
+      grado: alumno.grado || equipo.grado || '',
+      seccion: alumno.seccion || equipo.seccion || ''
+    };
+    if (state.sesion?.tipo === 'alumno' && (!filtrosAlumno.grado || !filtrosAlumno.seccion)) {
+      throw new Error('No se pudo determinar tu grado y sección para cargar el ranking.');
+    }
+    const data = await apiGet('ranking-individual', state.sesion?.tipo === 'alumno' ? filtrosAlumno : {});
     state.rankingIndividual = data.ranking || [];
     renderRankingIndividual();
   } catch (e) {
+    state.rankingIndividual = [];
+    renderRankingIndividual();
     toast('❌ Ranking individual: ' + e.message);
   }
 }
@@ -3341,17 +3357,33 @@ function filtrarDatosRanking(datos, filtros) {
   );
 }
 
+function filtrarRankingAlumno(datos) {
+  const alumno = state.sesion?.alumno || {};
+  const equipo = state.sesion?.equipo || {};
+  const grado = normalizarGrado(alumno.grado || equipo.grado);
+  const seccion = normalizarBusquedaGestion(alumno.seccion || equipo.seccion);
+  return datos.filter(d =>
+    normalizarGrado(d.grado) === grado &&
+    normalizarBusquedaGestion(d.seccion) === seccion
+  );
+}
+
 function renderRanking() {
   const tbody = $('#tablaRanking tbody');
   const filtros = actualizarFiltrosRanking('equipos', state.ranking);
   const ranking = state.sesion?.tipo === 'docente'
     ? filtrarDatosRanking(state.ranking, filtros)
-    : state.ranking;
+    : state.sesion?.tipo === 'alumno'
+      ? filtrarRankingAlumno(state.ranking)
+      : state.ranking;
+  const filtroGrado = state.sesion?.tipo === 'alumno'
+    ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || ''
+    : filtros.grado;
   const filtroSec = state.sesion?.tipo === 'alumno'
     ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
     : filtros.seccion;
-  $('#badgeFiltroSeccion').textContent = filtros.grado
-    ? `${filtros.grado}${filtroSec ? ` · Sección ${filtroSec}` : ''}`
+  $('#badgeFiltroSeccion').textContent = filtroGrado
+    ? `${filtroGrado}${filtroSec ? ` · Sección ${filtroSec}` : ''}`
     : filtroSec ? `Sección ${filtroSec}` : 'Todas las Secciones';
 
   if (!ranking.length) {
@@ -3391,7 +3423,9 @@ function renderRankingIndividual() {
   const filtros = actualizarFiltrosRanking('individual', state.rankingIndividual);
   const ranking = state.sesion?.tipo === 'docente'
     ? filtrarDatosRanking(state.rankingIndividual, filtros)
-    : state.rankingIndividual;
+    : state.sesion?.tipo === 'alumno'
+      ? filtrarRankingAlumno(state.rankingIndividual)
+      : state.rankingIndividual;
   if (!ranking.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px">Sin evaluaciones individuales registradas</td></tr>';
     return;
