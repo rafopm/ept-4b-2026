@@ -2369,9 +2369,13 @@ async function cargarReporteCalificaciones() {
   } catch (e) {
     state.reporteCalificaciones = null;
     $('#reporteCalificacionesImprimible').style.display = 'none';
-    estado.textContent = /reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)
-      ? 'La URL de Apps Script configurada no reconoce el endpoint de reportes. Verifica que public/config.js apunte a la implementación actualizada de code.gs y vuelve a publicar el frontend.'
-      : `No se pudo cargar el reporte: ${e.message}`;
+    if (/token/i.test(e.message) && /(expir|inv[aá]lid|400|no llegó)/i.test(e.message)) {
+      estado.textContent = 'La sesión de Google expiró o ya no es válida. Vuelve a iniciar sesión con el botón de Google y abre nuevamente el reporte.';
+    } else if (/reporte-calificaciones/i.test(e.message) && /acción inválida/i.test(e.message)) {
+      estado.textContent = 'La URL de Apps Script configurada no reconoce el endpoint de reportes. Verifica que public/config.js apunte a la implementación actualizada de code.gs y vuelve a publicar el frontend.';
+    } else {
+      estado.textContent = `No se pudo cargar el reporte: ${e.message}`;
+    }
   }
 }
 
