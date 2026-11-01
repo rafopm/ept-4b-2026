@@ -3520,7 +3520,9 @@ function renderPlan() {
       : `Se muestran las tareas asignadas a tu rol: ${alumno.rol || 'sin rol asignado'}.`;
   }
   const columnaRecurso = $('#thPlanRecurso');
-  columnaRecurso.textContent = esDocente ? 'Material docente' : 'Guía de aprendizaje';
+  const columnaPresentacion = $('#thPlanPresentacion');
+  columnaRecurso.textContent = 'Material del alumno';
+  columnaPresentacion.style.display = esDocente ? '' : 'none';
   const filasPlan = [...d].sort((a, b) =>
     normalizarSemana(a.Semana) - normalizarSemana(b.Semana) ||
     String(a.Rol || '').localeCompare(String(b.Rol || ''), 'es')
@@ -3539,12 +3541,10 @@ function renderPlan() {
       <td>${escaparHtml(x.Entregable_Especifico)}</td>
       <td><b>${escaparHtml(x.Rol_Backup || '—')}</b></td>
       <td style="font-size:12px;color:#555">${escaparHtml(x.Responsabilidad_Backup || '—')}</td>
-      <td>${enlacePlanHtml(
-        esDocente ? x.Link_Presentacion : x.Link_Guia_Aprendizaje,
-        esDocente ? 'Abrir presentación' : 'Abrir guía'
-      ) || '—'}</td>
+      <td>${enlacePlanHtml(x.Link_Guia_Aprendizaje, 'Abrir material del alumno') || '—'}</td>
+      ${esDocente ? `<td class="plan-material-docente-column">${enlacePlanHtml(x.Link_Presentacion, 'Abrir material docente') || '—'}</td>` : ''}
     </tr>`).join('')
-    : '<tr><td colspan="9" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>';
+    : `<tr><td colspan="${esDocente ? 10 : 9}" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>`;
 }
 
 function inicializarFiltrosPlan() {
