@@ -32,7 +32,8 @@
                 <th>Entregable Específico</th>
                 <th>Rol Backup</th>
                 <th>Responsabilidad Backup</th>
-                <th id="thPlanRecurso">Guía de aprendizaje</th>
+                <th id="thPlanRecurso">Material del alumno</th>
+                <th id="thPlanPresentacion" class="plan-material-docente-column">Material docente</th>
               </tr>
             </thead>
             <tbody></tbody>

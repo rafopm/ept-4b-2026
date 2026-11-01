@@ -564,11 +564,33 @@ body.es-alumno .contexto-alumno { display: inline; }
 .membrete-texto p { font-size: 12px; color: var(--texto-suave); margin-top: 2px; }
 .fecha-emision { margin-left: auto; font-size: 12px; color: var(--texto-suave); font-weight: 600; }
 
-.reporte-seccion-bloque { margin-bottom: 28px; page-break-inside: avoid; }
+.reporte-seccion-bloque { margin-bottom: 18px; }
 .reporte-seccion-bloque h3 {
-  background: #eef3fd; color: var(--azul-oscuro); padding: 8px 12px;
-  border-radius: 6px; font-size: 14px; margin-bottom: 12px;
+  display: flex; justify-content: space-between; gap: 8px;
+  background: #eef3fd; color: var(--azul-oscuro); padding: 6px 9px;
+  border-radius: 6px; font-size: 12px; margin-bottom: 8px;
 }
+.reporte-seccion-bloque h3 span { font-size: 11px; font-weight: 600; }
+.reporte-equipos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.reporte-equipo-card {
+  min-width: 0; border: 1px solid #cbd5e1; border-radius: 6px;
+  padding: 7px; background: #fff; break-inside: avoid; page-break-inside: avoid;
+}
+.reporte-equipo-cabecera {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 6px; margin-bottom: 5px; font-size: 10px;
+}
+.reporte-equipo-nombre { display: block; color: var(--azul-oscuro); font-size: 11px; }
+.reporte-equipo-proyecto { display: block; color: #475569; font-size: 9px; }
+.reporte-equipo-trello {
+  max-width: 42%; color: #475569; font-size: 8px; overflow-wrap: anywhere; text-align: right;
+}
+.reporte-tabla-equipo { font-size: 9px; }
+.reporte-tabla-equipo th, .reporte-tabla-equipo td { padding: 3px 4px; line-height: 1.15; }
+.reporte-tabla-equipo th { font-size: 8px; }
+.reporte-col-numero { width: 22px; text-align: center !important; }
+.reporte-col-rol { width: 48px; }
+.reporte-col-dni { width: 65px; }
 
 .pie-reporte {
   display: flex; justify-content: space-around; margin-top: 48px;
@@ -653,6 +675,21 @@ body.es-alumno .contexto-alumno { display: inline; }
   z-index: 300; box-shadow: 0 10px 25px rgba(0,0,0,.2);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.is-loading {
+  display: flex; align-items: center; gap: 10px;
+  background: #0c4a6e; border: 1px solid #38bdf8;
+  padding: 14px 20px; font-weight: 700;
+}
+.toast.is-loading::before {
+  content: ""; width: 18px; height: 18px; flex: 0 0 18px;
+  border: 3px solid rgba(255,255,255,.35); border-top-color: #fff;
+  border-radius: 50%; animation: giro-toast .8s linear infinite;
+}
+@keyframes giro-toast { to { transform: rotate(360deg); } }
+#uploadProgress[role="status"] {
+  padding: 10px 12px; color: #075985 !important; background: #eff6ff;
+  border: 1px solid #7dd3fc; border-radius: 8px; font-weight: 700;
+}
 
 /* ============ SORTEO Y TURNOS ============ */
 .data-loader {
@@ -1076,6 +1113,25 @@ body.es-alumno .contexto-alumno { display: inline; }
   .main { margin-left: 0 !important; width: 100% !important; }
   .view { display: block !important; padding: 0 !important; }
   .reporte-imprimible-wrap { border: none !important; box-shadow: none !important; padding: 0 !important; }
+  body.imprimir-reporte-listas .reporte-imprimible-wrap { font-size: 9pt; }
+  body.imprimir-reporte-listas .membrete-oficial { gap: 10px; padding-bottom: 8px; margin-bottom: 10px; }
+  body.imprimir-reporte-listas .escudo { font-size: 28px; }
+  body.imprimir-reporte-listas .membrete-texto h3 { font-size: 13px; }
+  body.imprimir-reporte-listas .membrete-texto h4 { font-size: 10px; }
+  body.imprimir-reporte-listas .membrete-texto p, body.imprimir-reporte-listas .fecha-emision { font-size: 9px; }
+  body.imprimir-reporte-listas .reporte-seccion-bloque { margin-bottom: 10px; }
+  body.imprimir-reporte-listas .reporte-seccion-bloque h3 { padding: 4px 6px; font-size: 10px; margin-bottom: 5px; }
+  body.imprimir-reporte-listas .reporte-equipos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  body.imprimir-reporte-listas .reporte-equipo-card { padding: 4px; border-radius: 4px; }
+  body.imprimir-reporte-listas .reporte-equipo-cabecera { margin-bottom: 3px; }
+  body.imprimir-reporte-listas .reporte-equipo-nombre { font-size: 9px; }
+  body.imprimir-reporte-listas .reporte-equipo-proyecto, body.imprimir-reporte-listas .reporte-equipo-trello { font-size: 7px; }
+  body.imprimir-reporte-listas .reporte-tabla-equipo { font-size: 7px; }
+  body.imprimir-reporte-listas .reporte-tabla-equipo th,
+  body.imprimir-reporte-listas .reporte-tabla-equipo td { padding: 2px 3px !important; line-height: 1.1; }
+  body.imprimir-reporte-listas .reporte-tabla-equipo th { font-size: 7px; }
+  body.imprimir-reporte-listas .pie-reporte { margin-top: 20px; padding-top: 10px; }
+  body.imprimir-reporte-listas .linea-firma { width: 150px; }
   .tabla th { background: #e2e8f0 !important; color: #000 !important; }
   .tabla td, .tabla th { border: 1px solid #cbd5e1 !important; padding: 6px 8px !important; }
 }

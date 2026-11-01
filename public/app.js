@@ -9,6 +9,10 @@ const STORAGE_TOKEN = 'google_id_token';
 const STORAGE_OFFLINE_PUNTOS = 'emprende_offline_puntos_extra';
 
 let frasesMotivacionales = [];
+let accionesServidorEnCurso = 0;
+let ocultarToastOperacionTimer = null;
+let mensajeToastPendiente = '';
+const solicitudesPostEnCurso = new Map();
 
 let state = {
   sesion: null,
@@ -57,10 +61,53 @@ const $$ = (s, c = document) => [...c.querySelectorAll(s)];
 function toast(msg, ms = 2800) {
   const t = $('#toast');
   if (!t) return;
+  if (accionesServidorEnCurso) {
+    mensajeToastPendiente = msg;
+    return;
+  }
+  mensajeToastPendiente = '';
+  clearTimeout(ocultarToastOperacionTimer);
   t.textContent = msg;
+  t.classList.remove('is-loading');
+  t.removeAttribute('aria-busy');
   t.classList.add('show');
   clearTimeout(t._t);
   t._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function mostrarOperacionEnCurso(mensaje) {
+  const t = $('#toast');
+  if (!t) return;
+  clearTimeout(ocultarToastOperacionTimer);
+  t.textContent = `⏳ ${mensaje}`;
+  t.setAttribute('role', 'status');
+  t.setAttribute('aria-live', 'polite');
+  t.setAttribute('aria-busy', 'true');
+  t.classList.add('show', 'is-loading');
+}
+
+function iniciarOperacionServidor(accion) {
+  accionesServidorEnCurso += 1;
+  mostrarOperacionEnCurso(accion === 'subir-archivo'
+    ? 'Subiendo el archivo a Google Drive. Espera y no vuelvas a pulsar.'
+    : 'Guardando los cambios. Espera y no vuelvas a pulsar.');
+}
+
+function finalizarOperacionServidor() {
+  accionesServidorEnCurso = Math.max(0, accionesServidorEnCurso - 1);
+  if (accionesServidorEnCurso) return;
+
+  ocultarToastOperacionTimer = setTimeout(() => {
+    if (accionesServidorEnCurso) return;
+    const t = $('#toast');
+    if (!t?.classList.contains('is-loading')) return;
+    if (mensajeToastPendiente) {
+      toast(mensajeToastPendiente);
+      return;
+    }
+    t.classList.remove('is-loading', 'show');
+    t.removeAttribute('aria-busy');
+  }, 500);
 }
 
 function invalidarSesionPorToken(error) {
@@ -109,25 +156,61 @@ async function apiGet(accion, params = {}) {
 
 async function apiPost(accion, payload = {}) {
   if (!state.sesion) throw new Error('Sin sesión activa');
+  const claveSolicitud = JSON.stringify([accion, payload]);
+  const solicitudExistente = solicitudesPostEnCurso.get(claveSolicitud);
+  if (solicitudExistente) return solicitudExistente;
+
   const body = {
     accion,
     correo: state.sesion.correo,
     id_token: localStorage.getItem(STORAGE_TOKEN) || '',
     ...payload
   };
-  const resp = await fetch(API_URL, {
-    method: 'POST',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body)
-  });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  const data = await resp.json();
-  if (data.error) {
-    invalidarSesionPorToken(data.error);
-    throw new Error(data.error);
+
+  iniciarOperacionServidor(accion);
+  const solicitud = (async () => {
+    try {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.error) {
+        invalidarSesionPorToken(data.error);
+        throw new Error(data.error);
+      }
+      return data;
+    } finally {
+      finalizarOperacionServidor();
+    }
+  })();
+  solicitudesPostEnCurso.set(claveSolicitud, solicitud);
+  try {
+    return await solicitud;
+  } finally {
+    if (solicitudesPostEnCurso.get(claveSolicitud) === solicitud) {
+      solicitudesPostEnCurso.delete(claveSolicitud);
+    }
   }
-  return data;
+}
+
+function decodificarPayloadToken(token) {
+  const partes = String(token || '').split('.');
+  if (partes.length !== 3 || !partes[1]) {
+    throw new Error('La credencial de Google no tiene un formato válido.');
+  }
+
+  const base64 = partes[1].replace(/-/g, '+').replace(/_/g, '/');
+  if (base64.length % 4 === 1) {
+    throw new Error('La credencial de Google no tiene un formato válido.');
+  }
+
+  const binario = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
+  const bytes = Uint8Array.from(binario, caracter => caracter.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 /* ============ LOGIN GOOGLE ============ */
@@ -138,7 +221,7 @@ function handleGoogleCredential(response) {
       throw new Error('No se recibió credencial de Google');
     }
     const idToken = response.credential;
-    const payload = JSON.parse(atob(idToken.split('.')[1]));
+    const payload = decodificarPayloadToken(idToken);
     const correo = (payload.email || '').toLowerCase().trim();
     if (!correo) throw new Error('El token no contiene correo');
 
@@ -200,8 +283,7 @@ function cerrarSesion() {
 
 function tokenVencido(token) {
   try {
-    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const exp = JSON.parse(atob(b64)).exp;
+    const exp = decodificarPayloadToken(token).exp;
     return !exp || exp * 1000 < Date.now() + 30000;
   } catch (e) { return true; }
 }
@@ -476,26 +558,42 @@ async function cargarPlan() {
 
 async function cargarRanking() {
   try {
-    const seccion = state.sesion?.tipo === 'alumno'
-      ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-      : '';
-    const data = await apiGet('ranking', seccion ? { seccion } : {});
+    const alumno = state.sesion?.tipo === 'alumno' ? state.sesion.alumno || {} : {};
+    const equipo = state.sesion?.equipo || {};
+    const filtrosAlumno = {
+      grado: alumno.grado || equipo.grado || '',
+      seccion: alumno.seccion || equipo.seccion || ''
+    };
+    if (state.sesion?.tipo === 'alumno' && (!filtrosAlumno.grado || !filtrosAlumno.seccion)) {
+      throw new Error('No se pudo determinar tu grado y sección para cargar el ranking.');
+    }
+    const data = await apiGet('ranking', state.sesion?.tipo === 'alumno' ? filtrosAlumno : {});
     state.ranking = data.ranking || [];
     renderRanking();
   } catch (e) {
+    state.ranking = [];
+    renderRanking();
     toast('❌ Ranking: ' + e.message);
   }
 }
 
 async function cargarRankingIndividual() {
   try {
-    const seccion = state.sesion?.tipo === 'alumno'
-      ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
-      : '';
-    const data = await apiGet('ranking-individual', seccion ? { seccion } : {});
+    const alumno = state.sesion?.tipo === 'alumno' ? state.sesion.alumno || {} : {};
+    const equipo = state.sesion?.equipo || {};
+    const filtrosAlumno = {
+      grado: alumno.grado || equipo.grado || '',
+      seccion: alumno.seccion || equipo.seccion || ''
+    };
+    if (state.sesion?.tipo === 'alumno' && (!filtrosAlumno.grado || !filtrosAlumno.seccion)) {
+      throw new Error('No se pudo determinar tu grado y sección para cargar el ranking.');
+    }
+    const data = await apiGet('ranking-individual', state.sesion?.tipo === 'alumno' ? filtrosAlumno : {});
     state.rankingIndividual = data.ranking || [];
     renderRankingIndividual();
   } catch (e) {
+    state.rankingIndividual = [];
+    renderRankingIndividual();
     toast('❌ Ranking individual: ' + e.message);
   }
 }
@@ -611,6 +709,8 @@ function verificarEvidenciaCargadaAlumno(semana) {
 
 async function guardarEvidenciaAlumno(e) {
   e.preventDefault();
+  const formulario = e.currentTarget;
+  if (formulario.dataset.enviando === 'true') return;
   const link = $('#inputLinkEvidencia').value.trim();
   const comentario = $('#inputComentarioEvidencia').value.trim();
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
@@ -639,6 +739,7 @@ async function guardarEvidenciaAlumno(e) {
   };
 
   try {
+    formulario.dataset.enviando = 'true';
     $('#btnGuardarEvidencia').disabled = true;
     $('#btnGuardarEvidencia').textContent = '⏳ Guardando...';
 
@@ -654,6 +755,7 @@ async function guardarEvidenciaAlumno(e) {
   } catch (err) {
     toast('❌ No se pudo guardar: ' + mensajeErrorEntrega(err, semana));
   } finally {
+    delete formulario.dataset.enviando;
     $('#btnGuardarEvidencia').disabled = false;
     $('#btnGuardarEvidencia').textContent = '📤 Guardar Enlace';
     verificarEvidenciaCargadaAlumno(semana);
@@ -662,6 +764,8 @@ async function guardarEvidenciaAlumno(e) {
 
 async function subirArchivoDriveAlumno(e) {
   e.preventDefault();
+  const formulario = e.currentTarget;
+  if (formulario.dataset.subiendo === 'true') return;
   const fileInput = $('#inputFileEvidencia');
   const comentario = $('#inputComentarioArchivo').value.trim();
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
@@ -696,8 +800,12 @@ async function subirArchivoDriveAlumno(e) {
   const btnSubir = $('#btnSubirArchivoDrive');
 
   try {
+    formulario.dataset.subiendo = 'true';
     btnSubir.disabled = true;
     progress.style.display = 'block';
+    progress.setAttribute('role', 'status');
+    progress.setAttribute('aria-live', 'polite');
+    progress.textContent = '⏳ Preparando el archivo y subiéndolo a Google Drive. No vuelvas a pulsar el botón.';
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -708,7 +816,7 @@ async function subirArchivoDriveAlumno(e) {
 
         const payload = {
           equipo_id: equipoId,
-          semana: String(semana),
+          semana,
           correo_alumno: correoAlumno,
           rol: alumno.rol || 'CEO',
           nombre_archivo: file.name,
@@ -720,7 +828,7 @@ async function subirArchivoDriveAlumno(e) {
 
         const datosFaltantes = [
           !payload.equipo_id && 'equipo_id',
-          !Number.isInteger(payload.semana) && 'semana',
+          (!Number.isInteger(payload.semana) || payload.semana < 0) && 'semana',
           !payload.correo_alumno && 'correo_alumno',
           !payload.nombre_archivo && 'nombre_archivo',
           !payload.base64_data && 'base64_data'
@@ -759,12 +867,16 @@ async function subirArchivoDriveAlumno(e) {
         const mensaje = mensajeErrorEntrega(errApi, semana);
         toast('❌ Error subiendo a Drive: ' + mensaje);
       } finally {
+        delete formulario.dataset.subiendo;
+        btnSubir.disabled = false;
         verificarEvidenciaCargadaAlumno(semana);
         progress.style.display = 'none';
       }
     };
 
     reader.onerror = () => {
+      delete formulario.dataset.subiendo;
+      btnSubir.disabled = false;
       toast('❌ Error leyendo el archivo local');
       progress.style.display = 'none';
       verificarEvidenciaCargadaAlumno(semana);
@@ -773,6 +885,8 @@ async function subirArchivoDriveAlumno(e) {
     reader.readAsDataURL(file);
 
   } catch (err) {
+    delete formulario.dataset.subiendo;
+    btnSubir.disabled = false;
     progress.style.display = 'none';
     verificarEvidenciaCargadaAlumno(semana);
     toast('❌ ' + err.message);
@@ -2127,7 +2241,7 @@ function inicializarReportes() {
     const seccion = $('#reporteFiltroSeccion').value;
     const equipos = state.equipos.filter(e =>
       normalizarGrado(e.grado) === normalizarGrado(grado) &&
-      String(e.seccion || '').trim() === seccion
+      normalizarBusquedaGestion(e.seccion || '') === normalizarBusquedaGestion(seccion)
     );
     $('#reporteFiltroEquipo').innerHTML = '<option value="">-- Todos los equipos --</option>' +
       equipos.map(e => `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)}</option>`).join('');
@@ -2147,30 +2261,49 @@ function renderReporteImprimible() {
   const secFiltro = $('#reporteFiltroSeccion').value;
   const eqFiltro = $('#reporteFiltroEquipo').value;
   const ocultarSensibles = $('#checkOcultarDatosSensibles').checked;
+  const botonImprimir = $('#btnImprimirReporte');
+  const estadoFiltros = $('#reporteEstadoFiltros');
+  const cont = $('#reporteContenido');
 
   $('#reporteFechaEmision').textContent = 'Fecha: ' + new Date().toLocaleDateString('es-PE', {
     day: '2-digit', month: 'long', year: 'numeric'
   });
 
+  botonImprimir.disabled = !gradoFiltro || !secFiltro;
+  if (!gradoFiltro || !secFiltro) {
+    estadoFiltros.textContent = 'Selecciona un grado y una sección para generar el reporte de grupos.';
+    $('#reporteSubtitulo').textContent = 'Reporte de Equipos, Roles y Calificaciones · Bimestre 4';
+    cont.innerHTML = '';
+    return;
+  }
+
+  estadoFiltros.textContent = `Reporte listo para ${gradoFiltro} · Sección ${secFiltro}.`;
+  $('#reporteSubtitulo').textContent = `Reporte de Equipos, Roles y Calificaciones · ${gradoFiltro} · Sección ${secFiltro} · Bimestre 4`;
+
   let equipos = state.equipos;
   if (gradoFiltro) equipos = equipos.filter(e => normalizarGrado(e.grado) === normalizarGrado(gradoFiltro));
-  if (secFiltro) equipos = equipos.filter(e => String(e.seccion).trim() === String(secFiltro).trim());
+  if (secFiltro) equipos = equipos.filter(e =>
+    normalizarBusquedaGestion(e.seccion || '') === normalizarBusquedaGestion(secFiltro)
+  );
   if (eqFiltro) equipos = equipos.filter(e => String(e.equipo_id) === String(eqFiltro));
 
-  const cont = $('#reporteContenido');
   if (!equipos.length) {
-    cont.innerHTML = '<p class="hint">No hay información para los filtros seleccionados.</p>';
+    cont.innerHTML = '<p class="hint">No hay equipos registrados para el grado y sección seleccionados.</p>';
     return;
   }
 
   // Agrupar por sección
-  const secciones = [...new Set(equipos.map(e => e.seccion || 'Sin Sección'))].sort();
+  const secciones = [secFiltro];
 
   cont.innerHTML = secciones.map(sec => {
-    const eqsSec = equipos.filter(e => (e.seccion || 'Sin Sección') === sec);
+    const eqsSec = equipos.filter(e =>
+      normalizarBusquedaGestion(e.seccion || '') === normalizarBusquedaGestion(sec)
+    );
 
     const tablasEq = eqsSec.map(eq => {
-      const miembros = state.alumnos.filter(a => String(a.equipo_id) === String(eq.equipo_id));
+      const miembros = state.alumnos
+        .filter(a => String(a.equipo_id) === String(eq.equipo_id))
+        .sort((a, b) => String(a.nombre || a.correo || '').localeCompare(String(b.nombre || b.correo || ''), 'es'));
 
       const filasMiembros = miembros.map((m, idx) => {
         const correoMostrar = ocultarSensibles ? '••••••••@colegiosanmartin.edu.pe' : m.correo;
@@ -2180,42 +2313,40 @@ function renderReporteImprimible() {
           <tr>
             <td style="text-align:center">${idx + 1}</td>
             <td><b>${escaparHtml(m.nombre || [m.nombres, m.apellidos].filter(Boolean).join(' ') || m.correo)}</b></td>
-            ${!ocultarSensibles ? `<td>${escaparHtml(dniMostrar)}</td>` : ''}
-            <td><span class="badge-rol rol-${m.rol || 'CEO'}" style="font-size:10px;padding:2px 6px">${m.rol || 'CEO'}</span></td>
-            <td>${escaparHtml(correoMostrar)}</td>
+            <td><span class="badge-rol rol-${escaparHtml(m.rol || 'CEO')}" style="font-size:10px;padding:2px 6px">${escaparHtml(m.rol || 'CEO')}</span></td>
+            ${!ocultarSensibles ? `<td>${escaparHtml(dniMostrar)}</td><td>${escaparHtml(correoMostrar)}</td>` : ''}
           </tr>`;
       }).join('');
 
       return `
-        <div style="margin-bottom:20px;border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#fff">
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px">
+        <article class="reporte-equipo-card">
+          <div class="reporte-equipo-cabecera">
             <div>
-              <strong style="color:var(--azul-oscuro);font-size:14px">Equipo: ${escaparHtml(eq.nombre_equipo)}</strong>
-              <span style="color:#555;margin-left:10px">Grado: ${escaparHtml(eq.grado)} · Proyecto: ${escaparHtml(eq.proyecto || '—')}</span>
+              <strong class="reporte-equipo-nombre">${escaparHtml(eq.nombre_equipo || 'Equipo sin nombre')}</strong>
+              <span class="reporte-equipo-proyecto">${escaparHtml(eq.proyecto || 'Sin proyecto')}</span>
             </div>
-            <div><b>Trello:</b> ${escaparHtml(eq.trello_url || '—')}</div>
+            ${eq.trello_url ? `<span class="reporte-equipo-trello">Trello: ${escaparHtml(eq.trello_url)}</span>` : ''}
           </div>
-          <table class="tabla" style="font-size:11.5px">
+          <table class="tabla reporte-tabla-equipo">
             <thead>
               <tr>
-                <th style="width:5%;text-align:center">N°</th>
+                <th class="reporte-col-numero">N°</th>
                 <th>Estudiante</th>
-                ${!ocultarSensibles ? '<th style="width:15%">DNI</th>' : ''}
-                <th style="width:15%">Rol Asignado</th>
-                <th style="width:30%">Correo Institucional</th>
+                <th class="reporte-col-rol">Rol</th>
+                ${!ocultarSensibles ? '<th class="reporte-col-dni">DNI</th><th>Correo institucional</th>' : ''}
               </tr>
             </thead>
             <tbody>
-              ${filasMiembros || '<tr><td colspan="5" style="text-align:center">Sin miembros registrados</td></tr>'}
+              ${filasMiembros || `<tr><td colspan="${ocultarSensibles ? 3 : 5}" style="text-align:center">Sin miembros registrados</td></tr>`}
             </tbody>
           </table>
-        </div>`;
+        </article>`;
     }).join('');
 
     return `
       <div class="reporte-seccion-bloque">
-        <h3>📍 Sección: ${sec} (${eqsSec.length} Equipos)</h3>
-        ${tablasEq}
+        <h3>📍 ${escaparHtml(gradoFiltro)} · Sección ${escaparHtml(sec)} <span>${eqsSec.length} ${eqsSec.length === 1 ? 'equipo' : 'equipos'}</span></h3>
+        <div class="reporte-equipos-grid">${tablasEq}</div>
       </div>`;
   }).join('');
 }
@@ -2398,6 +2529,10 @@ function imprimirReporteCalificaciones() {
 }
 
 function imprimirReporteListas() {
+  if (!$('#reporteFiltroGrado').value || !$('#reporteFiltroSeccion').value) {
+    toast('Selecciona un grado y una sección antes de imprimir.');
+    return;
+  }
   document.body.classList.add('imprimir-reporte-listas');
   window.addEventListener('afterprint', () => document.body.classList.remove('imprimir-reporte-listas'), { once: true });
   window.print();
@@ -3222,17 +3357,33 @@ function filtrarDatosRanking(datos, filtros) {
   );
 }
 
+function filtrarRankingAlumno(datos) {
+  const alumno = state.sesion?.alumno || {};
+  const equipo = state.sesion?.equipo || {};
+  const grado = normalizarGrado(alumno.grado || equipo.grado);
+  const seccion = normalizarBusquedaGestion(alumno.seccion || equipo.seccion);
+  return datos.filter(d =>
+    normalizarGrado(d.grado) === grado &&
+    normalizarBusquedaGestion(d.seccion) === seccion
+  );
+}
+
 function renderRanking() {
   const tbody = $('#tablaRanking tbody');
   const filtros = actualizarFiltrosRanking('equipos', state.ranking);
   const ranking = state.sesion?.tipo === 'docente'
     ? filtrarDatosRanking(state.ranking, filtros)
-    : state.ranking;
+    : state.sesion?.tipo === 'alumno'
+      ? filtrarRankingAlumno(state.ranking)
+      : state.ranking;
+  const filtroGrado = state.sesion?.tipo === 'alumno'
+    ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || ''
+    : filtros.grado;
   const filtroSec = state.sesion?.tipo === 'alumno'
     ? state.sesion.alumno?.seccion || state.sesion.equipo?.seccion || ''
     : filtros.seccion;
-  $('#badgeFiltroSeccion').textContent = filtros.grado
-    ? `${filtros.grado}${filtroSec ? ` · Sección ${filtroSec}` : ''}`
+  $('#badgeFiltroSeccion').textContent = filtroGrado
+    ? `${filtroGrado}${filtroSec ? ` · Sección ${filtroSec}` : ''}`
     : filtroSec ? `Sección ${filtroSec}` : 'Todas las Secciones';
 
   if (!ranking.length) {
@@ -3272,7 +3423,9 @@ function renderRankingIndividual() {
   const filtros = actualizarFiltrosRanking('individual', state.rankingIndividual);
   const ranking = state.sesion?.tipo === 'docente'
     ? filtrarDatosRanking(state.rankingIndividual, filtros)
-    : state.rankingIndividual;
+    : state.sesion?.tipo === 'alumno'
+      ? filtrarRankingAlumno(state.rankingIndividual)
+      : state.rankingIndividual;
   if (!ranking.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px">Sin evaluaciones individuales registradas</td></tr>';
     return;
@@ -3401,7 +3554,9 @@ function renderPlan() {
       : `Se muestran las tareas asignadas a tu rol: ${alumno.rol || 'sin rol asignado'}.`;
   }
   const columnaRecurso = $('#thPlanRecurso');
-  columnaRecurso.textContent = esDocente ? 'Material docente' : 'Guía de aprendizaje';
+  const columnaPresentacion = $('#thPlanPresentacion');
+  columnaRecurso.textContent = 'Material del alumno';
+  columnaPresentacion.style.display = esDocente ? '' : 'none';
   const filasPlan = [...d].sort((a, b) =>
     normalizarSemana(a.Semana) - normalizarSemana(b.Semana) ||
     String(a.Rol || '').localeCompare(String(b.Rol || ''), 'es')
@@ -3420,12 +3575,10 @@ function renderPlan() {
       <td>${escaparHtml(x.Entregable_Especifico)}</td>
       <td><b>${escaparHtml(x.Rol_Backup || '—')}</b></td>
       <td style="font-size:12px;color:#555">${escaparHtml(x.Responsabilidad_Backup || '—')}</td>
-      <td>${enlacePlanHtml(
-        esDocente ? x.Link_Presentacion : x.Link_Guia_Aprendizaje,
-        esDocente ? 'Abrir presentación' : 'Abrir guía'
-      ) || '—'}</td>
+      <td>${enlacePlanHtml(x.Link_Guia_Aprendizaje, 'Abrir material del alumno') || '—'}</td>
+      ${esDocente ? `<td class="plan-material-docente-column">${enlacePlanHtml(x.Link_Presentacion, 'Abrir material docente') || '—'}</td>` : ''}
     </tr>`).join('')
-    : '<tr><td colspan="9" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>';
+    : `<tr><td colspan="${esDocente ? 10 : 9}" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>`;
 }
 
 function inicializarFiltrosPlan() {

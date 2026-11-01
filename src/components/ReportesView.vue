@@ -4,10 +4,10 @@
         <div class="card-header-flex">
           <div>
             <h2>📄 Reportes y Listas Imprimibles</h2>
-            <p class="hint">Genera listas oficiales segmentadas por sección y grupo con opción de privacidad para el aula.</p>
+            <p class="hint">Selecciona grado y sección para imprimir sus grupos en un formato compacto, con opción de privacidad.</p>
           </div>
           <div class="toolbar">
-            <button class="btn btn-primary" id="btnImprimirReporte">🖨️ Imprimir / Guardar en PDF</button>
+            <button class="btn btn-primary" id="btnImprimirReporte" disabled>🖨️ Imprimir / Guardar en PDF</button>
           </div>
         </div>
 
@@ -32,6 +32,7 @@
             </label>
           </div>
         </div>
+        <p id="reporteEstadoFiltros" class="hint" role="status" aria-live="polite">Selecciona un grado y una sección para generar el reporte de grupos.</p>
       </div>
 
       <div class="card reporte-calificaciones-controles no-print">
