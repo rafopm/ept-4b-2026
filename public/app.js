@@ -480,12 +480,39 @@ function normalizarGrado(valor) {
     .replace(/\s+/g, ' ');
 }
 
+function normalizarTextoRol(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function rolCoincide(rolesPlan, rolAlumno) {
-  const rolNormalizado = String(rolAlumno || '').trim().toUpperCase();
+  const rolNormalizado = normalizarTextoRol(rolAlumno);
   if (!rolNormalizado) return false;
-  return String(rolesPlan || '')
-    .split(/[,;|/]+/)
-    .some(rol => rol.trim().toUpperCase() === rolNormalizado);
+
+  const opciones = new Set();
+  const agregarOpcion = valor => {
+    const normalizado = normalizarTextoRol(valor);
+    if (!normalizado) return;
+    opciones.add(normalizado);
+    const partes = normalizado.split(/\s+/);
+    partes.forEach(parte => parte && opciones.add(parte));
+  };
+
+  String(rolesPlan || '')
+    .split(/(?:\s*[,/|&+-]\s*|\s+y\s+|\s*\+\s*)/i)
+    .forEach(agregarOpcion);
+  agregarOpcion(rolAlumno);
+
+  return [...opciones].some(opcion =>
+    opcion === rolNormalizado ||
+    opcion.includes(rolNormalizado) ||
+    rolNormalizado.includes(opcion)
+  );
 }
 
 function escaparHtml(valor) {
