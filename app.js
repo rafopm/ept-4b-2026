@@ -474,9 +474,15 @@ function mensajeErrorEntrega(error, semana) {
 
 function normalizarGrado(valor) {
   return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[°ºª]/g, '')
+    .replace(/\b(?:primero|segundo|tercero|cuarto|quinto|sexto|septimo|octavo|noveno|decimo)\b/gi, match => match.slice(0, 1))
+    .replace(/\b(\d+)(?:ro|ra|to|ta)?\b/gi, '$1')
+    .replace(/\s*secundaria\s*/gi, ' ')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
     .trim()
     .toLowerCase()
-    .replace(/\s*secundaria\s*/g, '')
     .replace(/\s+/g, ' ');
 }
 
@@ -1166,9 +1172,30 @@ async function cargarCalificacionAgil() {
       normalizarGrado(e.grado) === normalizarGrado(grado) &&
       String(e.seccion).trim() === String(seccion).trim()
     );
-    const equiposObjetivo = individualOnly
+
+    const alumnosSeccion = state.alumnos.filter(a =>
+      normalizarGrado(a.grado) === normalizarGrado(grado) &&
+      String(a.seccion).trim() === String(seccion).trim()
+    );
+
+    const equiposObjetivoBase = equiposSeccion.length
       ? equiposSeccion
-      : equiposSeccion.filter(e => String(e.equipo_id) === String(eqId));
+      : [...new Map(
+          alumnosSeccion
+            .filter(a => a.equipo_id)
+            .map(a => [String(a.equipo_id), {
+              equipo_id: a.equipo_id,
+              nombre_equipo: a.equipo_id,
+              grado: a.grado || grado,
+              seccion: a.seccion || seccion,
+              proyecto: 'Equipo sin registro',
+              trello_url: ''
+            }])
+        ).values()];
+
+    const equiposObjetivo = individualOnly
+      ? equiposObjetivoBase
+      : equiposObjetivoBase.filter(e => String(e.equipo_id) === String(eqId));
     const idsEquipos = new Set(equiposObjetivo.map(e => String(e.equipo_id)));
 
     const equipo = individualOnly ? null : equiposObjetivo[0];
