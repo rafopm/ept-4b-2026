@@ -12,6 +12,7 @@ let frasesMotivacionales = [];
 let accionesServidorEnCurso = 0;
 let ocultarToastOperacionTimer = null;
 let mensajeToastPendiente = '';
+let temporizadorLimiteEntrega = null;
 const solicitudesPostEnCurso = new Map();
 
 let state = {
@@ -477,8 +478,17 @@ function normalizarGrado(valor) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[°ºª]/g, '')
-    .replace(/\b(?:primero|segundo|tercero|cuarto|quinto|sexto|septimo|octavo|noveno|decimo)\b/gi, match => match.slice(0, 1))
-    .replace(/\b(\d+)(?:ro|ra|to|ta)?\b/gi, '$1')
+    .replace(/\b(?:primero|primera)\b/gi, '1')
+    .replace(/\b(?:segundo|segunda)\b/gi, '2')
+    .replace(/\b(?:tercero|tercera)\b/gi, '3')
+    .replace(/\b(?:cuarto|cuarta)\b/gi, '4')
+    .replace(/\b(?:quinto|quinta)\b/gi, '5')
+    .replace(/\b(?:sexto|sexta)\b/gi, '6')
+    .replace(/\b(?:septimo|septima)\b/gi, '7')
+    .replace(/\b(?:octavo|octava)\b/gi, '8')
+    .replace(/\b(?:noveno|novena)\b/gi, '9')
+    .replace(/\b(?:decimo|decima)\b/gi, '10')
+    .replace(/\b(\d+)(?:ro|ra|ero|era|do|da|to|ta)?\b/gi, '$1')
     .replace(/\s*secundaria\s*/gi, ' ')
     .replace(/[^a-zA-Z0-9]+/g, ' ')
     .trim()
@@ -494,6 +504,69 @@ function normalizarTextoRol(valor) {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+function obtenerTareaAlumno(semana) {
+  const alumno = state.sesion?.alumno || {};
+  const equipo = state.sesion?.equipo || {};
+  const grado = alumno.grado || equipo.grado || '';
+  const seccion = alumno.seccion || equipo.seccion || '';
+  return state.plan.find(fila =>
+    normalizarGrado(fila.Grado) === normalizarGrado(grado) &&
+    Number(fila.Semana) === Number(semana) &&
+    (!seccion || !fila.Seccion || String(fila.Seccion).trim() === String(seccion).trim()) &&
+    rolCoincide(fila.Rol, alumno.rol)
+  ) || null;
+}
+
+function normalizarFechaLimite(valor) {
+  if (!valor) return '';
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+    const anio = valor.getFullYear();
+    const mes = String(valor.getMonth() + 1).padStart(2, '0');
+    const dia = String(valor.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+  }
+  const texto = String(valor).trim();
+  const iso = texto.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  return null;
+}
+
+function fechaActualEscolar() {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Lima',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const parte = tipo => partes.find(item => item.type === tipo)?.value || '';
+  return `${parte('year')}-${parte('month')}-${parte('day')}`;
+}
+
+function fechaLimiteVencida(valor) {
+  const fechaLimite = normalizarFechaLimite(valor);
+  return Boolean((valor && !fechaLimite) || (fechaLimite && fechaActualEscolar() > fechaLimite));
+}
+
+function programarBloqueoPorFechaLimite(semana, fechaLimite) {
+  clearTimeout(temporizadorLimiteEntrega);
+  if (!fechaLimite || fechaLimiteVencida(fechaLimite)) return;
+
+  const siguienteDia = new Date(`${fechaLimite}T00:00:00-05:00`).getTime() + 24 * 60 * 60 * 1000;
+  const tiempoRestante = Math.max(0, siguienteDia - Date.now());
+  temporizadorLimiteEntrega = setTimeout(
+    () => verificarEvidenciaCargadaAlumno(semana),
+    Math.min(tiempoRestante, 2147483647)
+  );
+}
+
+function mostrarFechaLimite(valor) {
+  const fecha = normalizarFechaLimite(valor);
+  if (valor && !fecha) return 'Fecha límite inválida; consulta al docente';
+  if (!fecha) return 'Sin fecha límite definida';
+  const [anio, mes, dia] = fecha.split('-');
+  return `Fecha límite: ${dia}/${mes}/${anio}`;
 }
 
 function rolCoincide(rolesPlan, rolAlumno) {
@@ -650,12 +723,13 @@ function renderDashboardAlumno() {
   $('#dashAlumnoSubtitulo').textContent = `${equipo.nombre} · ${alumno.grado || equipo.grado} · Sección ${alumno.seccion || equipo.seccion || '—'}`;
 
   // Buscar tarea en el Plan Semanal
-  const gradoNormalizado = String(alumno.grado || equipo.grado || '').trim();
-  const planFila = state.plan.find(p =>
-    normalizarGrado(p.Grado) === normalizarGrado(gradoNormalizado) &&
-    Number(p.Semana) === semana &&
-    rolCoincide(p.Rol, alumno.rol)
-  );
+  const planFila = obtenerTareaAlumno(semana);
+  const fechaLimiteVencidaActual = fechaLimiteVencida(planFila?.Fecha_Limite_Entrega);
+  $('#dashAlumnoFechaLimite').textContent = planFila?.Fecha_Limite_Entrega
+    ? `${mostrarFechaLimite(planFila.Fecha_Limite_Entrega)}${fechaLimiteVencidaActual
+      ? ' — plazo vencido; ya no se aceptan entregas.'
+      : ' — puedes entregar hasta finalizar ese día.'}`
+    : 'Sin fecha límite definida; la entrega está habilitada.';
 
   if (planFila) {
     $('#dashAlumnoTemaSemanal').textContent = `Semana ${semana} · ${planFila.Tema_Semanal}`;
@@ -700,6 +774,10 @@ function renderDashboardAlumno() {
 function verificarEvidenciaCargadaAlumno(semana) {
   const correo = state.sesion.correo.toLowerCase().trim();
   const eqId = state.sesion.alumno?.equipo_id;
+  const tarea = obtenerTareaAlumno(semana);
+  const fechaLimite = normalizarFechaLimite(tarea?.Fecha_Limite_Entrega);
+  const plazoVencido = fechaLimiteVencida(tarea?.Fecha_Limite_Entrega);
+  programarBloqueoPorFechaLimite(semana, fechaLimite);
   const ev = state.evidencias.find(e =>
     String(e.equipo_id).trim() === String(eqId).trim() &&
     Number(e.semana) === Number(semana) &&
@@ -713,16 +791,31 @@ function verificarEvidenciaCargadaAlumno(semana) {
   const inputCom = $('#inputComentarioEvidencia');
   const inputFile = $('#inputFileEvidencia');
   const inputComentarioArchivo = $('#inputComentarioArchivo');
-  const bloqueada = Boolean(ev && ev.link_evidencia);
+  const bloqueada = Boolean((ev && ev.link_evidencia) || plazoVencido);
+  const estadoFechaLimite = $('#dashAlumnoFechaLimite');
+
+  if (estadoFechaLimite && tarea?.Fecha_Limite_Entrega) {
+    estadoFechaLimite.textContent = `${mostrarFechaLimite(tarea.Fecha_Limite_Entrega)}${plazoVencido
+      ? ' — plazo vencido; ya no se aceptan entregas.'
+      : ' — puedes entregar hasta finalizar ese día.'}`;
+  } else if (estadoFechaLimite) {
+    estadoFechaLimite.textContent = 'Sin fecha límite definida; la entrega está habilitada.';
+  }
 
   if (bloqueada) {
-    contenedor.style.display = 'flex';
-    linkEl.href = ev.link_evidencia;
-    linkEl.textContent = ev.link_evidencia;
-    fechaEl.textContent = ev.fecha ? `Registrado: ${new Date(ev.fecha).toLocaleString('es-PE')}` : 'Registrado';
-    $('#mensajeEntregaBloqueada').style.display = 'block';
-    inputLink.value = ev.link_evidencia;
-    inputCom.value = ev.comentario_alumno || '';
+    const evidenciaRegistrada = Boolean(ev && ev.link_evidencia);
+    contenedor.style.display = evidenciaRegistrada ? 'flex' : 'none';
+    if (evidenciaRegistrada) {
+      linkEl.href = ev.link_evidencia;
+      linkEl.textContent = ev.link_evidencia;
+      fechaEl.textContent = ev.fecha ? `Registrado: ${new Date(ev.fecha).toLocaleString('es-PE')}` : 'Registrado';
+      $('#mensajeEntregaBloqueada').style.display = 'block';
+      inputLink.value = ev.link_evidencia;
+      inputCom.value = ev.comentario_alumno || '';
+    } else {
+      inputLink.value = '';
+      inputCom.value = '';
+    }
   } else {
     contenedor.style.display = 'none';
     $('#mensajeEntregaBloqueada').style.display = 'none';
@@ -748,6 +841,12 @@ async function guardarEvidenciaAlumno(e) {
   const comentario = $('#inputComentarioEvidencia').value.trim();
   const semana = normalizarSemana(state.semanaSeleccionadaAlumno);
   const alumno = state.sesion.alumno;
+
+  if (fechaLimiteVencida(obtenerTareaAlumno(semana)?.Fecha_Limite_Entrega)) {
+    verificarEvidenciaCargadaAlumno(semana);
+    toast('⛔ El plazo de entrega de esta tarea ya venció.');
+    return;
+  }
 
   if (state.evidencias.some(ev =>
     String(ev.equipo_id).trim() === String(alumno.equipo_id).trim() &&
@@ -805,6 +904,12 @@ async function subirArchivoDriveAlumno(e) {
   const alumno = state.sesion.alumno;
   const equipoId = alumno.equipo_id || state.sesion.equipo?.id || state.sesion.equipo?.equipo_id || '';
   const correoAlumno = state.sesion.correo || alumno.correo || '';
+
+  if (fechaLimiteVencida(obtenerTareaAlumno(semana)?.Fecha_Limite_Entrega)) {
+    verificarEvidenciaCargadaAlumno(semana);
+    toast('⛔ El plazo de entrega de esta tarea ya venció.');
+    return;
+  }
 
   if (state.evidencias.some(ev =>
     String(ev.equipo_id).trim() === String(equipoId).trim() &&
@@ -3649,6 +3754,50 @@ function actualizarOpcionesAlumnoNuevoEquipo(rol) {
 /* =========================================================
    9. PLAN SEMANAL (MATRIZ DATA)
    ========================================================= */
+async function guardarFechaLimitePlan(button) {
+  const fila = button.closest('tr');
+  const input = fila?.querySelector('.input-fecha-limite-plan');
+  const estado = fila?.querySelector('.estado-fecha-limite-plan');
+  if (!fila || !input || !estado) return;
+
+  const fechaLimite = input.value;
+  const identidad = {
+    grado: fila.dataset.grado,
+    semana: fila.dataset.semana,
+    rol: fila.dataset.rol,
+    proyecto: fila.dataset.proyecto,
+    tarea_detallada: fila.dataset.tarea,
+    entregable_especifico: fila.dataset.entregable
+  };
+
+  button.disabled = true;
+  estado.textContent = 'Guardando…';
+  try {
+    await apiPost('actualizar-fecha-limite-tarea', {
+      ...identidad,
+      fecha_limite: fechaLimite
+    });
+
+    state.plan = state.plan.map(tarea =>
+      normalizarGrado(tarea.Grado) === normalizarGrado(identidad.grado) &&
+      Number(tarea.Semana) === Number(identidad.semana) &&
+      normalizarTextoRol(tarea.Rol) === normalizarTextoRol(identidad.rol) &&
+      normalizarTextoRol(tarea.Proyecto) === normalizarTextoRol(identidad.proyecto) &&
+      normalizarTextoRol(tarea.Tarea_Detallada) === normalizarTextoRol(identidad.tarea_detallada) &&
+      normalizarTextoRol(tarea.Entregable_Especifico) === normalizarTextoRol(identidad.entregable_especifico)
+        ? { ...tarea, Fecha_Limite_Entrega: fechaLimite }
+        : tarea
+    );
+    toast(fechaLimite ? '✅ Fecha límite guardada.' : '✅ Fecha límite eliminada.');
+    renderPlan();
+  } catch (error) {
+    estado.textContent = 'No se pudo guardar: ' + error.message;
+    toast('❌ No se pudo guardar la fecha límite: ' + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderPlan() {
   const esDocente = state.sesion?.tipo === 'docente';
   const esAlumno = state.sesion?.tipo === 'alumno';
@@ -3691,7 +3840,12 @@ function renderPlan() {
   );
   const rolAlumno = state.sesion?.alumno?.rol || '';
   $('#tablaPlan tbody').innerHTML = filasPlan.length ? filasPlan.map(x => `
-    <tr>
+    <tr ${esDocente ? `data-grado="${escaparHtml(x.Grado)}"
+        data-semana="${escaparHtml(x.Semana)}"
+        data-rol="${escaparHtml(x.Rol)}"
+        data-proyecto="${escaparHtml(x.Proyecto)}"
+        data-tarea="${escaparHtml(x.Tarea_Detallada)}"
+        data-entregable="${escaparHtml(x.Entregable_Especifico)}"` : ''}>
       <td><b>${escaparHtml(x.Grado)}</b></td>
       <td style="text-align:center"><b>${escaparHtml(x.Semana)}</b></td>
       <td>${escaparHtml(x.Tema_Semanal)}</td>
@@ -3701,12 +3855,25 @@ function renderPlan() {
         </span>`).join(' ') || '—'}</td>
       <td>${escaparHtml(x.Tarea_Detallada)}</td>
       <td>${escaparHtml(x.Entregable_Especifico)}</td>
+      ${esDocente
+        ? `<td>
+             <div style="display:flex;gap:6px;align-items:center">
+               <input type="date" class="input-fecha-limite-plan" value="${escaparHtml(normalizarFechaLimite(x.Fecha_Limite_Entrega))}" aria-label="Fecha límite para ${escaparHtml(x.Tarea_Detallada || 'tarea')}">
+               <button type="button" class="btn btn-secondary btn-sm btn-guardar-fecha-limite">Guardar</button>
+             </div>
+             <small class="estado-fecha-limite-plan" aria-live="polite">${x.Fecha_Limite_Entrega ? 'Fecha configurada' : 'Vacío: sin límite'}</small>
+           </td>`
+        : `<td>${escaparHtml(mostrarFechaLimite(x.Fecha_Limite_Entrega))}</td>`}
       <td><b>${escaparHtml(x.Rol_Backup || '—')}</b></td>
       <td style="font-size:12px;color:#555">${escaparHtml(x.Responsabilidad_Backup || '—')}</td>
       <td>${enlacePlanHtml(x.Link_Guia_Aprendizaje, 'Abrir material del alumno') || '—'}</td>
       ${esDocente ? `<td class="plan-material-docente-column">${enlacePlanHtml(x.Link_Presentacion, 'Abrir material docente') || '—'}</td>` : ''}
     </tr>`).join('')
-    : `<tr><td colspan="${esDocente ? 10 : 9}" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>`;
+    : `<tr><td colspan="${esDocente ? 11 : 10}" style="text-align:center;padding:24px">No hay filas del plan para los filtros seleccionados.</td></tr>`;
+
+  $$('.btn-guardar-fecha-limite', $('#tablaPlan tbody')).forEach(button => {
+    button.onclick = () => guardarFechaLimitePlan(button);
+  });
 }
 
 function inicializarFiltrosPlan() {
