@@ -36,6 +36,7 @@
               <p id="dashAlumnoEntregableEspecifico" class="entregable-texto"></p>
             </div>
 
+            <p id="dashAlumnoFechaLimite" class="hint" role="status" aria-live="polite"></p>
             <div class="plan-link-wrap" id="dashAlumnoGuiaAprendizaje"></div>
 
             <div class="ley-box">

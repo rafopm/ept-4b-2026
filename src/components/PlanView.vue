@@ -30,6 +30,7 @@
                 <th>Rol asignado</th>
                 <th>Tarea Detallada</th>
                 <th>Entregable Específico</th>
+                <th>Fecha límite</th>
                 <th>Rol Backup</th>
                 <th>Responsabilidad Backup</th>
                 <th id="thPlanRecurso">Material del alumno</th>
