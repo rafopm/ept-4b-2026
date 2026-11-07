@@ -13,6 +13,8 @@ let accionesServidorEnCurso = 0;
 let ocultarToastOperacionTimer = null;
 let mensajeToastPendiente = '';
 let temporizadorLimiteEntrega = null;
+let estadoCalificacionEntregaAlumno = { semana: null, calificada: false, verificada: false, error: false };
+const solicitudesEstadoCalificacionEntrega = new Map();
 const solicitudesPostEnCurso = new Map();
 
 let state = {
@@ -725,11 +727,16 @@ function renderDashboardAlumno() {
   // Buscar tarea en el Plan Semanal
   const planFila = obtenerTareaAlumno(semana);
   const fechaLimiteVencidaActual = fechaLimiteVencida(planFila?.Fecha_Limite_Entrega);
-  $('#dashAlumnoFechaLimite').textContent = planFila?.Fecha_Limite_Entrega
-    ? `${mostrarFechaLimite(planFila.Fecha_Limite_Entrega)}${fechaLimiteVencidaActual
-      ? ' — plazo vencido; ya no se aceptan entregas.'
-      : ' — puedes entregar hasta finalizar ese día.'}`
-    : 'Sin fecha límite definida; la entrega está habilitada.';
+  const estadoSemana = estadoCalificacionEntregaAlumno.semana === semana
+    ? estadoCalificacionEntregaAlumno
+    : { calificada: false, verificada: false, error: false };
+  $('#dashAlumnoFechaLimite').textContent = estadoTextoEntrega(
+    planFila?.Fecha_Limite_Entrega,
+    fechaLimiteVencidaActual,
+    estadoSemana.calificada,
+    estadoSemana.verificada,
+    estadoSemana.error
+  );
 
   if (planFila) {
     $('#dashAlumnoTemaSemanal').textContent = `Semana ${semana} · ${planFila.Tema_Semanal}`;
@@ -771,7 +778,20 @@ function renderDashboardAlumno() {
   verificarEvidenciaCargadaAlumno(semana);
 }
 
-function verificarEvidenciaCargadaAlumno(semana) {
+function estadoTextoEntrega(fechaLimite, plazoVencido, calificada, verificada, error) {
+  const estadoFecha = fechaLimite
+    ? `${mostrarFechaLimite(fechaLimite)}${plazoVencido
+      ? ' — plazo vencido.'
+      : ' — puedes entregar hasta finalizar ese día.'}`
+    : 'Sin fecha límite definida.';
+  if (calificada) return `${estadoFecha} La tarea ya fue calificada; no se aceptan nuevas entregas.`;
+  if (plazoVencido) return `${estadoFecha} No se aceptan entregas.`;
+  if (error) return `${estadoFecha} No se pudo verificar el estado; vuelve a cargar la página.`;
+  if (!verificada) return `${estadoFecha} Verificando el estado de calificación…`;
+  return `${estadoFecha} La entrega está habilitada.`;
+}
+
+function aplicarEstadoEntregaAlumno(semana, estadoCalificacion = estadoCalificacionEntregaAlumno) {
   const correo = state.sesion.correo.toLowerCase().trim();
   const eqId = state.sesion.alumno?.equipo_id;
   const tarea = obtenerTareaAlumno(semana);
@@ -791,15 +811,19 @@ function verificarEvidenciaCargadaAlumno(semana) {
   const inputCom = $('#inputComentarioEvidencia');
   const inputFile = $('#inputFileEvidencia');
   const inputComentarioArchivo = $('#inputComentarioArchivo');
-  const bloqueada = Boolean((ev && ev.link_evidencia) || plazoVencido);
+  const calificada = estadoCalificacion.semana === Number(semana) && estadoCalificacion.calificada;
+  const verificacionPendiente = estadoCalificacion.semana === Number(semana) && !estadoCalificacion.verificada;
+  const bloqueada = Boolean((ev && ev.link_evidencia) || plazoVencido || calificada || verificacionPendiente);
   const estadoFechaLimite = $('#dashAlumnoFechaLimite');
 
-  if (estadoFechaLimite && tarea?.Fecha_Limite_Entrega) {
-    estadoFechaLimite.textContent = `${mostrarFechaLimite(tarea.Fecha_Limite_Entrega)}${plazoVencido
-      ? ' — plazo vencido; ya no se aceptan entregas.'
-      : ' — puedes entregar hasta finalizar ese día.'}`;
-  } else if (estadoFechaLimite) {
-    estadoFechaLimite.textContent = 'Sin fecha límite definida; la entrega está habilitada.';
+  if (estadoFechaLimite) {
+    estadoFechaLimite.textContent = estadoTextoEntrega(
+      tarea?.Fecha_Limite_Entrega,
+      plazoVencido,
+      calificada,
+      estadoCalificacion.verificada,
+      estadoCalificacion.error
+    );
   }
 
   if (bloqueada) {
@@ -833,6 +857,53 @@ function verificarEvidenciaCargadaAlumno(semana) {
   $('#btnTabModoArchivo').disabled = bloqueada;
 }
 
+async function verificarEvidenciaCargadaAlumno(semana) {
+  if (state.sesion?.tipo !== 'alumno') return;
+
+  const semanaCalificada = Number(semana);
+  const consultaExistente = solicitudesEstadoCalificacionEntrega.get(semanaCalificada);
+  if (consultaExistente) return consultaExistente;
+
+  const semanaActual = Number(state.semanaSeleccionadaAlumno);
+  if (semanaActual !== semanaCalificada) return;
+  estadoCalificacionEntregaAlumno = {
+    semana: semanaCalificada,
+    calificada: false,
+    verificada: false,
+    error: false
+  };
+  aplicarEstadoEntregaAlumno(semanaCalificada, estadoCalificacionEntregaAlumno);
+
+  const consulta = (async () => {
+    try {
+      const estado = await apiGet('estado-entrega', { semana: semanaCalificada });
+      if (Number(state.semanaSeleccionadaAlumno) !== semanaCalificada) return;
+      estadoCalificacionEntregaAlumno = {
+        semana: semanaCalificada,
+        calificada: Boolean(estado.calificada),
+        verificada: true,
+        error: false
+      };
+      aplicarEstadoEntregaAlumno(semanaCalificada, estadoCalificacionEntregaAlumno);
+    } catch (error) {
+      console.error('No se pudo verificar si la tarea ya fue calificada:', error);
+      if (Number(state.semanaSeleccionadaAlumno) === semanaCalificada) {
+        estadoCalificacionEntregaAlumno = {
+          semana: semanaCalificada,
+          calificada: false,
+          verificada: false,
+          error: true
+        };
+        aplicarEstadoEntregaAlumno(semanaCalificada, estadoCalificacionEntregaAlumno);
+      }
+    } finally {
+      solicitudesEstadoCalificacionEntrega.delete(semanaCalificada);
+    }
+  })();
+  solicitudesEstadoCalificacionEntrega.set(semanaCalificada, consulta);
+  return consulta;
+}
+
 async function guardarEvidenciaAlumno(e) {
   e.preventDefault();
   const formulario = e.currentTarget;
@@ -845,6 +916,14 @@ async function guardarEvidenciaAlumno(e) {
   if (fechaLimiteVencida(obtenerTareaAlumno(semana)?.Fecha_Limite_Entrega)) {
     verificarEvidenciaCargadaAlumno(semana);
     toast('⛔ El plazo de entrega de esta tarea ya venció.');
+    return;
+  }
+  if (estadoCalificacionEntregaAlumno.semana !== semana || !estadoCalificacionEntregaAlumno.verificada) {
+    toast('⏳ Espera a que se verifique el estado de la tarea antes de enviar.');
+    return;
+  }
+  if (estadoCalificacionEntregaAlumno.calificada) {
+    toast('⛔ Esta tarea ya fue calificada; no se aceptan nuevas entregas.');
     return;
   }
 
@@ -908,6 +987,14 @@ async function subirArchivoDriveAlumno(e) {
   if (fechaLimiteVencida(obtenerTareaAlumno(semana)?.Fecha_Limite_Entrega)) {
     verificarEvidenciaCargadaAlumno(semana);
     toast('⛔ El plazo de entrega de esta tarea ya venció.');
+    return;
+  }
+  if (estadoCalificacionEntregaAlumno.semana !== semana || !estadoCalificacionEntregaAlumno.verificada) {
+    toast('⏳ Espera a que se verifique el estado de la tarea antes de enviar.');
+    return;
+  }
+  if (estadoCalificacionEntregaAlumno.calificada) {
+    toast('⛔ Esta tarea ya fue calificada; no se aceptan nuevas entregas.');
     return;
   }
 

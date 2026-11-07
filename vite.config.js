@@ -10,7 +10,7 @@ export default defineConfig({
       '/api': {
         target: 'https://script.google.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/macros/s/AKfycbzUFsj7RD1On24-kDq4gXWQjwd5ycRNSzsQlqZuN3dPrRbD1B6FVtV-DX5npZ1i8ZgX/exec'),
+        rewrite: (path) => path.replace(/^\/api/, '/macros/s/AKfycbzkAkkSqVCucEZuaNofOJbXMaIpU9sF21zQBOsWJRJjmFQfd0xdlH5SwpjCj17klrz5/exec'),
       },
     },
   },
