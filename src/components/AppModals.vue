@@ -26,7 +26,10 @@
     </div>
 
     <div class="form-group" id="xpGrupoAlumno">
-      <label>Estudiante:</label>
+      <label for="xpBuscarAlumno">Buscar estudiante por nombre, correo, DNI o rol:</label>
+      <input type="search" id="xpBuscarAlumno" class="input-full" placeholder="Escribe parte del nombre, correo, DNI o rol" autocomplete="off">
+      <small id="xpResultadoBusqueda" class="hint" aria-live="polite"></small>
+      <label for="xpSelectAlumno">Estudiante:</label>
       <select id="xpSelectAlumno" class="select"></select>
     </div>
 

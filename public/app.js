@@ -2515,14 +2515,51 @@ function renderAuditoriaPuntosExtra() {
     </tr>`).join('');
 }
 
-function abrirModalOtorgarXP() {
-  // Poblar alumnos y equipos
-  $('#xpSelectAlumno').innerHTML = state.alumnos.map(a =>
-    `<option value="${a.correo}">${a.nombre || a.correo} (${a.rol} - ${a.seccion || ''})</option>`
-  ).join('');
+function actualizarResultadosBusquedaAlumnoXP() {
+    const busqueda = normalizarBusquedaGestion($('#xpBuscarAlumno').value);
+    const terminos = busqueda.split(/\s+/).filter(Boolean);
+    const alumnos = state.alumnos
+      .map(alumno => {
+        const nombre = alumno.nombre || [alumno.nombres, alumno.apellidos].filter(Boolean).join(' ') || alumno.correo;
+        const textoBusqueda = normalizarBusquedaGestion([
+          nombre,
+          alumno.correo,
+          alumno.dni,
+          alumno.rol,
+          alumno.grado,
+          alumno.seccion
+        ].filter(Boolean).join(' '));
+        const equipo = state.equipos.find(item => String(item.equipo_id) === String(alumno.equipo_id));
+        const seccion = alumno.seccion || equipo?.seccion || '';
+        return { alumno, nombre, textoBusqueda, seccion };
+      })
+      .filter(item => terminos.every(termino => item.textoBusqueda.includes(termino)))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
-  $('#xpSelectEquipo').innerHTML = state.equipos.map(e =>
-    `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)} (${escaparHtml(e.seccion || '')})</option>`
+    const select = $('#xpSelectAlumno');
+    const seleccionado = select.value;
+    select.innerHTML = '<option value="">-- Selecciona un estudiante --</option>' +
+      alumnos.map(({ alumno, nombre, seccion }) =>
+        `<option value="${escaparHtml(alumno.correo)}">${escaparHtml(nombre)} · ${escaparHtml(alumno.rol || 'Sin rol')} · ${escaparHtml(seccion || 'Sin sección')} (${escaparHtml(alumno.correo || '')})</option>`
+      ).join('');
+    select.value = alumnos.some(({ alumno }) => String(alumno.correo) === seleccionado)
+      ? seleccionado
+      : '';
+
+    const resultado = $('#xpResultadoBusqueda');
+    resultado.textContent = terminos.length
+      ? `${alumnos.length} de ${state.alumnos.length} estudiantes encontrados.`
+      : `${state.alumnos.length} estudiantes. Escribe para filtrar la lista.`;
+}
+
+function abrirModalOtorgarXP() {
+    // Poblar alumnos y equipos
+    $('#xpBuscarAlumno').value = '';
+    actualizarResultadosBusquedaAlumnoXP();
+    $('#xpBuscarAlumno').oninput = actualizarResultadosBusquedaAlumnoXP;
+
+    $('#xpSelectEquipo').innerHTML = state.equipos.map(e =>
+      `<option value="${escaparHtml(e.equipo_id)}">${escaparHtml(e.nombre_equipo)} (${escaparHtml(e.seccion || '')})</option>`
   ).join('');
 
   $('#xpTipoDestinatario').onchange = () => {
@@ -2541,6 +2578,7 @@ function abrirModalOtorgarXP() {
   });
 
   $('#modalOtorgarXP').classList.add('active');
+  $('#xpBuscarAlumno').focus();
 }
 
 async function confirmarOtorgarXP() {
