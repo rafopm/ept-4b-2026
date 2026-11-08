@@ -4,7 +4,7 @@
         <div class="card-header-flex">
           <div>
             <h2>🏆 Ranking de Equipos de la Sección</h2>
-            <p class="hint" id="rankingActualizado">Progreso Colectivo = Entrega Grupal + Promedio Individual + XP Extra</p>
+            <p class="hint" id="rankingActualizado">Orden por porcentaje de logro en las calificaciones; los puntos totales desempatan. Los XP por Backup cuentan solo para el estudiante.</p>
           </div>
           <div class="ranking-filter-badge" id="badgeFiltroSeccion">Todas las Secciones</div>
         </div>
