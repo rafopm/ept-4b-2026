@@ -3691,11 +3691,15 @@ function filtrarRankingAlumno(datos) {
 function renderRanking() {
   const tbody = $('#tablaRanking tbody');
   const filtros = actualizarFiltrosRanking('equipos', state.ranking);
-  const ranking = state.sesion?.tipo === 'docente'
+  const rankingFiltrado = state.sesion?.tipo === 'docente'
     ? filtrarDatosRanking(state.ranking, filtros)
     : state.sesion?.tipo === 'alumno'
       ? filtrarRankingAlumno(state.ranking)
       : state.ranking;
+  const ranking = [...rankingFiltrado].sort((a, b) =>
+    (Number(b.porcentaje) || 0) - (Number(a.porcentaje) || 0) ||
+    (Number(b.puntos) || 0) - (Number(a.puntos) || 0)
+  );
   const filtroGrado = state.sesion?.tipo === 'alumno'
     ? state.sesion.alumno?.grado || state.sesion.equipo?.grado || ''
     : filtros.grado;
