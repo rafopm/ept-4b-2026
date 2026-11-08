@@ -3879,7 +3879,7 @@ function renderRankingIndividual() {
         <td>${r.grado}</td>
         <td style="text-align:center">${r.seccion || '—'}</td>
         <td><span class="badge-rol rol-${r.rol || 'CEO'}" style="font-size:10px;padding:2px 6px">${r.rol || 'CEO'}</span></td>
-        <td>${r.equipo_id || '—'}</td>
+        <td>${escaparHtml(r.equipo_nombre || r.equipo_id || '—')}</td>
         <td style="text-align:center">${r.puntos_base ?? r.puntos}</td>
         <td style="text-align:center;color:#d97706">${r.xp_extra ? `+${r.xp_extra} XP` : '0'}</td>
         <td style="text-align:center;color:#174ea6"><b>${r.puntos}</b></td>
