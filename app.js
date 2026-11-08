@@ -791,6 +791,21 @@ function estadoTextoEntrega(fechaLimite, plazoVencido, calificada, verificada, e
   return `${estadoFecha} La entrega está habilitada.`;
 }
 
+function bloquearEntregaSiYaCalificada(error, semana) {
+  const mensaje = error instanceof Error ? error.message : String(error || '');
+  if (!/ya fue calificada|ya fue calificado|tarea ya fue calificada|no se aceptan nuevas entregas/i.test(mensaje)) {
+    return false;
+  }
+  estadoCalificacionEntregaAlumno = {
+    semana: Number(semana),
+    calificada: true,
+    verificada: true,
+    error: false
+  };
+  aplicarEstadoEntregaAlumno(Number(semana), estadoCalificacionEntregaAlumno);
+  return true;
+}
+
 function aplicarEstadoEntregaAlumno(semana, estadoCalificacion = estadoCalificacionEntregaAlumno) {
   const correo = state.sesion.correo.toLowerCase().trim();
   const eqId = state.sesion.alumno?.equipo_id;
@@ -812,7 +827,9 @@ function aplicarEstadoEntregaAlumno(semana, estadoCalificacion = estadoCalificac
   const inputFile = $('#inputFileEvidencia');
   const inputComentarioArchivo = $('#inputComentarioArchivo');
   const calificada = estadoCalificacion.semana === Number(semana) && estadoCalificacion.calificada;
-  const verificacionPendiente = estadoCalificacion.semana === Number(semana) && !estadoCalificacion.verificada;
+  const verificacionPendiente = estadoCalificacion.semana === Number(semana) &&
+    !estadoCalificacion.verificada &&
+    !estadoCalificacion.error;
   const bloqueada = Boolean((ev && ev.link_evidencia) || plazoVencido || calificada || verificacionPendiente);
   const estadoFechaLimite = $('#dashAlumnoFechaLimite');
 
@@ -857,6 +874,37 @@ function aplicarEstadoEntregaAlumno(semana, estadoCalificacion = estadoCalificac
   $('#btnTabModoArchivo').disabled = bloqueada;
 }
 
+async function consultarEstadoCalificacionEntrega(semana) {
+  try {
+    return await apiGet('estado-entrega', { semana });
+  } catch (error) {
+    if (/token/i.test(error instanceof Error ? error.message : String(error))) throw error;
+
+    const equipoId = state.sesion?.alumno?.equipo_id || state.sesion?.equipo?.id;
+    if (!equipoId) throw error;
+
+    try {
+      const datos = await apiGet('calificacion-semana', { equipo_id: equipoId, semana });
+      if (!datos.calificacion_grupal_existente ||
+          !Array.isArray(datos.calificaciones_individuales_existentes)) {
+        throw new Error('El servidor no devolvió el estado de calificación esperado.');
+      }
+      const correo = String(state.sesion.correo || '').toLowerCase().trim();
+      const calificacionIndividual = datos.calificaciones_individuales_existentes.find(item =>
+        String(item.correo_alumno || '').toLowerCase().trim() === correo
+      );
+      return {
+        calificada: Boolean(calificacionIndividual?.calificado)
+      };
+    } catch (errorAlternativo) {
+      const mensaje = errorAlternativo instanceof Error
+        ? errorAlternativo.message
+        : String(errorAlternativo || 'Error desconocido');
+      throw new Error(`Consulta de calificación incompatible (${mensaje})`);
+    }
+  }
+}
+
 async function verificarEvidenciaCargadaAlumno(semana) {
   if (state.sesion?.tipo !== 'alumno') return;
 
@@ -876,7 +924,7 @@ async function verificarEvidenciaCargadaAlumno(semana) {
 
   const consulta = (async () => {
     try {
-      const estado = await apiGet('estado-entrega', { semana: semanaCalificada });
+      const estado = await consultarEstadoCalificacionEntrega(semanaCalificada);
       if (Number(state.semanaSeleccionadaAlumno) !== semanaCalificada) return;
       estadoCalificacionEntregaAlumno = {
         semana: semanaCalificada,
@@ -888,6 +936,7 @@ async function verificarEvidenciaCargadaAlumno(semana) {
     } catch (error) {
       console.error('No se pudo verificar si la tarea ya fue calificada:', error);
       if (Number(state.semanaSeleccionadaAlumno) === semanaCalificada) {
+        const detalleError = error instanceof Error ? error.message : String(error || 'Error desconocido');
         estadoCalificacionEntregaAlumno = {
           semana: semanaCalificada,
           calificada: false,
@@ -895,6 +944,18 @@ async function verificarEvidenciaCargadaAlumno(semana) {
           error: true
         };
         aplicarEstadoEntregaAlumno(semanaCalificada, estadoCalificacionEntregaAlumno);
+        const estadoFechaLimite = $('#dashAlumnoFechaLimite');
+        if (estadoFechaLimite) {
+          const tarea = obtenerTareaAlumno(semanaCalificada);
+          const plazoVencido = fechaLimiteVencida(tarea?.Fecha_Limite_Entrega);
+          estadoFechaLimite.textContent = `${estadoTextoEntrega(
+            tarea?.Fecha_Limite_Entrega,
+            plazoVencido,
+            false,
+            false,
+            true
+          )} No se pudo consultar el estado (${detalleError.slice(0, 160)}). Puedes intentar enviar; el servidor verificará si la tarea ya fue calificada.`;
+        }
       }
     } finally {
       solicitudesEstadoCalificacionEntrega.delete(semanaCalificada);
@@ -918,13 +979,17 @@ async function guardarEvidenciaAlumno(e) {
     toast('⛔ El plazo de entrega de esta tarea ya venció.');
     return;
   }
-  if (estadoCalificacionEntregaAlumno.semana !== semana || !estadoCalificacionEntregaAlumno.verificada) {
+  if (estadoCalificacionEntregaAlumno.semana !== semana ||
+      (!estadoCalificacionEntregaAlumno.verificada && !estadoCalificacionEntregaAlumno.error)) {
     toast('⏳ Espera a que se verifique el estado de la tarea antes de enviar.');
     return;
   }
   if (estadoCalificacionEntregaAlumno.calificada) {
     toast('⛔ Esta tarea ya fue calificada; no se aceptan nuevas entregas.');
     return;
+  }
+  if (estadoCalificacionEntregaAlumno.error) {
+    console.warn('Se intentará enviar la evidencia aunque no se pudo consultar el estado de calificación; el servidor validará el envío.');
   }
 
   if (state.evidencias.some(ev =>
@@ -964,6 +1029,7 @@ async function guardarEvidenciaAlumno(e) {
     toast('✅ Evidencia guardada exitosamente');
     verificarEvidenciaCargadaAlumno(semana);
   } catch (err) {
+    bloquearEntregaSiYaCalificada(err, semana);
     toast('❌ No se pudo guardar: ' + mensajeErrorEntrega(err, semana));
   } finally {
     delete formulario.dataset.enviando;
@@ -989,13 +1055,17 @@ async function subirArchivoDriveAlumno(e) {
     toast('⛔ El plazo de entrega de esta tarea ya venció.');
     return;
   }
-  if (estadoCalificacionEntregaAlumno.semana !== semana || !estadoCalificacionEntregaAlumno.verificada) {
+  if (estadoCalificacionEntregaAlumno.semana !== semana ||
+      (!estadoCalificacionEntregaAlumno.verificada && !estadoCalificacionEntregaAlumno.error)) {
     toast('⏳ Espera a que se verifique el estado de la tarea antes de enviar.');
     return;
   }
   if (estadoCalificacionEntregaAlumno.calificada) {
     toast('⛔ Esta tarea ya fue calificada; no se aceptan nuevas entregas.');
     return;
+  }
+  if (estadoCalificacionEntregaAlumno.error) {
+    console.warn('Se intentará enviar el archivo aunque no se pudo consultar el estado de calificación; el servidor validará el envío.');
   }
 
   if (state.evidencias.some(ev =>
@@ -1089,6 +1159,7 @@ async function subirArchivoDriveAlumno(e) {
         $('#inputComentarioArchivo').value = '';
 
       } catch (errApi) {
+        bloquearEntregaSiYaCalificada(errApi, semana);
         const mensaje = mensajeErrorEntrega(errApi, semana);
         toast('❌ Error subiendo a Drive: ' + mensaje);
       } finally {
